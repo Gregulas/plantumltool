@@ -376,6 +376,16 @@ button.primary:hover { background: var(--accent-strong); }
   button, select { min-height: 32px; font-size: 12px; }
 }
 
+
+.matching-block-boundary {
+  display: inline;
+  margin: 0 -2px;
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 68%, transparent);
+}
+
 /* PlantUML autocomplete */
 .editor-wrap { position: relative; }
 

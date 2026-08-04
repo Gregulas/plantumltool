@@ -208,7 +208,7 @@ function caretCoordinates(textarea, position, relativeTo) {
   return { x, y };
 }
 
-export function createAutocomplete({ textarea, host, onChange, enabled = true }) {
+export function createAutocomplete({ textarea, host, onBeforeChange, onChange, enabled = true }) {
   const popup = document.createElement('div');
   popup.className = 'autocomplete-popup';
   popup.hidden = true;
@@ -316,11 +316,13 @@ export function createAutocomplete({ textarea, host, onChange, enabled = true })
     const raw = item.insertText;
     const markerIndex = raw.indexOf(CURSOR);
     const insertion = raw.replace(CURSOR, '');
+    onBeforeChange?.();
     textarea.setRangeText(insertion, range.start, selectedEnd, 'end');
     const newCaret = range.start + (markerIndex >= 0 ? markerIndex : insertion.length);
     textarea.setSelectionRange(newCaret, newCaret);
     close();
     textarea.focus();
+
     onChange?.();
     return true;
   }

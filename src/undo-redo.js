@@ -208,12 +208,8 @@ function installKeyboardShortcuts(editor, history) {
   });
 }
 
-function initialize() {
-  const editor = findEditor();
-  if (!editor) {
-    console.warn('Undo/redo was not initialized because no source textarea was found.');
-    return;
-  }
+export function installUndoRedo(editor = findEditor()) {
+  if (!editor) throw new Error('Undo/redo requires a source textarea.');
 
   installStyles();
   const history = createHistory(editor);
@@ -223,10 +219,5 @@ function initialize() {
   // Expose integration hooks for Open, New, template, format, and quick-fix actions.
   // Call checkpoint() after a programmatic edit, or reset() after loading a document.
   window.plantUmlEditHistory = history;
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize, { once: true });
-} else {
-  initialize();
+  return history;
 }

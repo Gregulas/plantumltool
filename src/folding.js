@@ -114,6 +114,23 @@ export function findFoldRegions(source) {
   return regions.sort((a, b) => a.startLine - b.startLine || b.endLine - a.endLine);
 }
 
+export function matchingBlockBoundary(source, caretOffset) {
+  const text = String(source ?? '');
+  const safeOffset = Math.max(0, Math.min(Number(caretOffset) || 0, text.length));
+  const line = text.slice(0, safeOffset).split(/\r\n|\r|\n/).length;
+  const matches = findFoldRegions(text)
+    .filter(region => region.startLine === line || region.endLine === line)
+    .sort((a, b) => (a.endLine - a.startLine) - (b.endLine - b.startLine));
+
+  const region = matches[0];
+  return region ? {
+    activeLine: line,
+    startLine: region.startLine,
+    endLine: region.endLine,
+    type: region.type
+  } : null;
+}
+
 export function buildFoldProjection(source, collapsedStarts = new Set()) {
   const text = String(source ?? '');
   const newline = newlineStyle(text);

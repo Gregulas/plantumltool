@@ -1,4 +1,5 @@
 import './styles.css';
+import { installUndoRedo } from './undo-redo.js';
 import vizGlobalUrl from '@plantuml/core/viz-global.js?url';
 import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
@@ -8,7 +9,7 @@ import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './edi
 import { formatPlantUmlEdit } from './formatter.js';
 import { highlightPlantUml } from './syntax-highlight.js';
 import { createColorPicker } from './color-picker.js';
-import { buildFoldProjection, containingCollapsedRegion, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
+import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -316,6 +317,7 @@ const els = {
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
 els.editor.value = state.foldProjection.text;
+const editHistory = installUndoRedo(els.editor);
 els.liveToggle.checked = state.live;
 els.autocompleteToggle.checked = state.autocomplete;
 applyTheme();
@@ -883,7 +885,17 @@ function runLocalDiagnostics() {
 
 function updateSyntaxHighlight() {
   if (!els.highlightCode) return;
-  els.highlightCode.innerHTML = highlightPlantUml(els.editor.value);
+  const highlightedLines = highlightPlantUml(els.editor.value).split('\n');
+  const match = matchingBlockBoundary(els.editor.value, els.editor.selectionStart);
+  if (match) {
+    for (const line of [match.startLine, match.endLine]) {
+      const index = line - 1;
+      if (index >= 0 && index < highlightedLines.length) {
+        highlightedLines[index] = `<span class="matching-block-boundary" data-block-type="${match.type}">${highlightedLines[index] || ' '}</span>`;
+      }
+    }
+  }
+  els.highlightCode.innerHTML = highlightedLines.join('\n');
   els.highlightLayer?.closest('.editor-wrap')?.classList.add('syntax-highlighted');
   if (els.highlightLayer) {
     els.highlightLayer.scrollTop = els.editor.scrollTop;
@@ -1046,7 +1058,9 @@ const autocomplete = createAutocomplete({
   textarea: els.editor,
   host: document.querySelector('.editor-wrap'),
   enabled: state.autocomplete,
+  onBeforeChange: () => editHistory.checkpoint(),
   onChange: () => {
+    editHistory.checkpoint();
     state.rendererDiagnostics = [];
     updateEditorMeta();
     scheduleRender();
@@ -1119,6 +1133,11 @@ els.editor.addEventListener('input', () => {
   scheduleRender();
 });
 els.editor.addEventListener('scroll', syncScroll);
+els.editor.addEventListener('click', updateSyntaxHighlight);
+els.editor.addEventListener('keyup', event => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) updateSyntaxHighlight();
+});
+els.editor.addEventListener('select', updateSyntaxHighlight);
 els.editor.addEventListener('keydown', event => {
   const editingKey = event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key === 'Tab' || (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey);
   if (editingKey && hasCollapsedFolds()) unfoldAllPreserveCaret();
@@ -1319,7 +1338,9 @@ async function init() {
     await loadClassicScript(vizGlobalUrl);
     els.renderStatus.textContent = 'Engine ready';
     await doRender();
-    setTimeout(fitDiagram, 100);
+    // Always start a fresh page load at actual size. Fit-to-view remains
+    // available as an explicit user action from the preview toolbar.
+    setZoom(1);
   } catch (error) {
     showError(`PlantUML engine failed to initialize. ${error?.message || error}`);
     els.renderStatus.textContent = 'Engine initialization failed';
