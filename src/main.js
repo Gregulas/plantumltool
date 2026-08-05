@@ -716,13 +716,21 @@ function renderedNavigationRecordFromEvent(event) {
   return findTextNavigationTarget(index.source, [descriptor.clickedText, ...(descriptor.texts || [])]);
 }
 
+function readableDiagramLabel(value) {
+  return String(value ?? '')
+    .replace(/\\n/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function describeNavigationRecord(record) {
   if (!record) return 'diagram element';
   if (record.type === 'relationship') {
-    return record.message || `${record.source} → ${record.target}`;
+    return readableDiagramLabel(record.message) || `${readableDiagramLabel(record.source)} → ${readableDiagramLabel(record.target)}`;
   }
-  if (record.type === 'member') return record.memberLabel || record.label || record.reference;
-  return record.label || record.reference || record.message || record.kind || 'diagram element';
+  if (record.type === 'member') return readableDiagramLabel(record.memberLabel || record.label || record.reference);
+  return readableDiagramLabel(record.label || record.reference || record.message || record.kind) || 'diagram element';
 }
 
 function navigateFromDiagram(event) {

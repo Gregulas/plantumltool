@@ -1,0 +1,60 @@
+diff --git a/package-lock.json b/package-lock.json
+index 2c52782..b826658 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "plantuml-local-studio",
+-  "version": "1.6.2",
++  "version": "1.6.3",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "plantuml-local-studio",
+-      "version": "1.6.2",
++      "version": "1.6.3",
+       "dependencies": {
+         "@plantuml/core": "1.2026.6"
+       },
+diff --git a/package.json b/package.json
+index 60061a6..52eea19 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "plantuml-local-studio",
+-  "version": "1.6.2",
++  "version": "1.6.3",
+   "private": true,
+   "type": "module",
+   "description": "Offline local PlantUML editor and renderer with type-based syntax highlighting, inline color picker, collapsible blocks, autocomplete, formatting, diagnostics, semantic reference warnings, resizable panels, last-known-good rendering, and diagram-to-source navigation.",
+diff --git a/src/main.js b/src/main.js
+index 601a446..854221e 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -716,13 +716,21 @@ function renderedNavigationRecordFromEvent(event) {
+   return findTextNavigationTarget(index.source, [descriptor.clickedText, ...(descriptor.texts || [])]);
+ }
+ 
++function readableDiagramLabel(value) {
++  return String(value ?? '')
++    .replace(/\\n/g, ' ')
++    .replace(/[\r\n]+/g, ' ')
++    .replace(/\s+/g, ' ')
++    .trim();
++}
++
+ function describeNavigationRecord(record) {
+   if (!record) return 'diagram element';
+   if (record.type === 'relationship') {
+-    return record.message || `${record.source} → ${record.target}`;
++    return readableDiagramLabel(record.message) || `${readableDiagramLabel(record.source)} → ${readableDiagramLabel(record.target)}`;
+   }
+-  if (record.type === 'member') return record.memberLabel || record.label || record.reference;
+-  return record.label || record.reference || record.message || record.kind || 'diagram element';
++  if (record.type === 'member') return readableDiagramLabel(record.memberLabel || record.label || record.reference);
++  return readableDiagramLabel(record.label || record.reference || record.message || record.kind) || 'diagram element';
+ }
+ 
+ function navigateFromDiagram(event) {
