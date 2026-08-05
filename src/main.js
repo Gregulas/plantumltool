@@ -9,6 +9,7 @@ import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './edi
 import { formatPlantUmlEdit } from './formatter.js';
 import { highlightPlantUml } from './syntax-highlight.js';
 import { createColorPicker } from './color-picker.js';
+import { readObjectAppearance, updateObjectAppearance } from './object-quick-edit.js';
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
 
 const DEFAULT_SOURCE = `@startuml
@@ -141,6 +142,9 @@ const state = {
   source: localStorage.getItem('plantuml-local-source') || DEFAULT_SOURCE,
   svg: '',
   filename: 'diagram.puml',
+  fileHandle: null,
+  savedSource: '',
+  isNewFile: true,
   zoom: 1,
   dark: localStorage.getItem('plantuml-local-theme') === 'dark',
   live: localStorage.getItem('plantuml-live-render') !== 'false',
@@ -225,7 +229,7 @@ app.innerHTML = `
           <div id="problemsList" class="problems-list"></div>
         </section>
         <div class="statusbar">
-          <span id="fileName">diagram.puml</span>
+          <span class="file-identity"><strong id="fileName">diagram.puml</strong><span id="fileStatus" class="file-status unsaved">Unsaved</span></span>
           <span id="sourceStats">0 lines</span>
         </div>
       </section>
@@ -258,6 +262,13 @@ app.innerHTML = `
           </div>
         </div>
 
+        <form id="objectQuickEdit" class="object-quick-edit" hidden>
+          <div class="quick-edit-heading"><strong id="quickEditTitle">Quick edit</strong><button id="quickEditClose" type="button" aria-label="Close quick edit">×</button></div>
+          <label>Color <input id="quickEditColor" type="text" placeholder="#32BCBB or #LightBlue" /></label>
+          <label>Style / stereotype <input id="quickEditStyle" type="text" placeholder="service" /></label>
+          <div class="quick-edit-actions"><button id="quickEditReset" type="button">Clear</button><button class="primary" type="submit">Apply</button></div>
+        </form>
+
         <div id="errorPanel" class="error-panel" hidden>
           <div class="error-panel-heading">
             <span class="error-panel-icon" aria-hidden="true">!</span>
@@ -288,6 +299,7 @@ const els = {
   highlightCode: document.querySelector('#highlightCode'),
   sourceStats: document.querySelector('#sourceStats'),
   fileName: document.querySelector('#fileName'),
+  fileStatus: document.querySelector('#fileStatus'),
   fileInput: document.querySelector('#fileInput'),
   liveToggle: document.querySelector('#liveToggle'),
   autocompleteToggle: document.querySelector('#autocompleteToggle'),
@@ -312,12 +324,19 @@ const els = {
   workspaceSplitter: document.querySelector('#workspaceSplitter'),
   editorPane: document.querySelector('.editor-pane'),
   previewPane: document.querySelector('.preview-pane'),
-  problemsSplitter: document.querySelector('#problemsSplitter')
+  problemsSplitter: document.querySelector('#problemsSplitter'),
+  objectQuickEdit: document.querySelector('#objectQuickEdit'),
+  quickEditTitle: document.querySelector('#quickEditTitle'),
+  quickEditColor: document.querySelector('#quickEditColor'),
+  quickEditStyle: document.querySelector('#quickEditStyle'),
+  quickEditClose: document.querySelector('#quickEditClose'),
+  quickEditReset: document.querySelector('#quickEditReset')
 };
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
 els.editor.value = state.foldProjection.text;
 const editHistory = installUndoRedo(els.editor);
+state.savedSource = '';
 els.liveToggle.checked = state.live;
 els.autocompleteToggle.checked = state.autocomplete;
 applyTheme();
@@ -903,6 +922,19 @@ function updateSyntaxHighlight() {
   }
 }
 
+function isSourceDirty() {
+  return state.isNewFile || canonicalSource() !== state.savedSource;
+}
+
+function updateFileStatus() {
+  const dirty = isSourceDirty();
+  els.fileName.textContent = state.filename || 'diagram.puml';
+  els.fileStatus.textContent = dirty ? (state.isNewFile ? 'New • Save required' : 'Modified • Save required') : 'Saved';
+  els.fileStatus.classList.toggle('unsaved', dirty);
+  els.fileStatus.classList.toggle('saved', !dirty);
+  document.title = `${dirty ? '● ' : ''}${state.filename || 'diagram.puml'} • PlantUML Local Studio`;
+}
+
 function updateEditorMeta() {
   // Diagnostics rebuild the Problems and line-number DOM. Keep the textarea's
   // caret/selection and viewport exactly where the user left them while that
@@ -916,6 +948,7 @@ function updateEditorMeta() {
   const folded = state.foldedStarts.size;
   els.sourceStats.textContent = `${lineCount} lines • ${charCount.toLocaleString()} chars${folded ? ` • ${folded} folded` : ''}`;
   localStorage.setItem('plantuml-local-source', source);
+  updateFileStatus();
   updateSyntaxHighlight();
   runLocalDiagnostics();
   restoreEditorView(els.editor, editorView);
@@ -990,8 +1023,53 @@ function baseName() {
   return (state.filename || 'diagram.puml').replace(/\.(puml|plantuml|pu|txt)$/i, '') || 'diagram';
 }
 
-function saveSource() {
-  downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', `${baseName()}.puml`);
+async function writeSourceToHandle(handle) {
+  const writable = await handle.createWritable();
+  await writable.write(canonicalSource());
+  await writable.close();
+  state.fileHandle = handle;
+  state.filename = handle.name || state.filename;
+  state.savedSource = canonicalSource();
+  state.isNewFile = false;
+  updateFileStatus();
+  els.renderStatus.textContent = `Saved ${state.filename}`;
+}
+
+async function saveSource() {
+  try {
+    if (state.fileHandle) return await writeSourceToHandle(state.fileHandle);
+    if ('showSaveFilePicker' in window) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: state.filename || 'diagram.puml',
+        types: [{ description: 'PlantUML source', accept: { 'text/plain': ['.puml', '.plantuml', '.pu', '.txt'] } }]
+      });
+      return await writeSourceToHandle(handle);
+    }
+    downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', `${baseName()}.puml`);
+    state.savedSource = canonicalSource();
+    state.isNewFile = false;
+    updateFileStatus();
+    els.renderStatus.textContent = 'Downloaded source (browser cannot overwrite files directly)';
+  } catch (error) {
+    if (error?.name !== 'AbortError') showError(`Save failed. ${error?.message || error}`);
+  }
+}
+
+async function openSourceFile() {
+  try {
+    if ('showOpenFilePicker' in window) {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{ description: 'PlantUML source', accept: { 'text/plain': ['.puml', '.plantuml', '.pu', '.txt'] } }]
+      });
+      const file = await handle.getFile();
+      replaceSource(await file.text(), file.name, { fileHandle: handle, saved: true });
+      return;
+    }
+    els.fileInput.click();
+  } catch (error) {
+    if (error?.name !== 'AbortError') showError(`Open failed. ${error?.message || error}`);
+  }
 }
 
 function exportSvg() {
@@ -1080,7 +1158,7 @@ const colorPicker = createColorPicker({
   }
 });
 
-function replaceSource(source, filename = 'diagram.puml') {
+function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
   colorPicker.close();
   state.source = source;
   state.foldedStarts.clear();
@@ -1090,7 +1168,11 @@ function replaceSource(source, filename = 'diagram.puml') {
   els.navigationStatus.textContent = 'Click a diagram element to locate its source';
   els.navigationStatus.classList.remove('navigation-stale');
   state.filename = filename;
-  els.fileName.textContent = filename;
+  state.fileHandle = fileHandle;
+  state.savedSource = saved ? source : '';
+  state.isNewFile = isNew || !saved;
+  editHistory.reset();
+  updateFileStatus();
   updateEditorMeta();
   scheduleRender();
 }
@@ -1201,9 +1283,9 @@ els.unfoldAllBtn.addEventListener('click', () => {
   unfoldAllPreserveCaret();
   els.renderStatus.textContent = count ? 'All blocks expanded' : 'No blocks are collapsed';
 });
-document.querySelector('#newBtn').addEventListener('click', () => replaceSource('@startuml\n\n@enduml', 'diagram.puml'));
-document.querySelector('#openBtn').addEventListener('click', () => els.fileInput.click());
-document.querySelector('#saveBtn').addEventListener('click', saveSource);
+document.querySelector('#newBtn').addEventListener('click', () => replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
+document.querySelector('#openBtn').addEventListener('click', openSourceFile);
+document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
 document.querySelector('#exportSvgBtn').addEventListener('click', exportSvg);
 document.querySelector('#exportPngBtn').addEventListener('click', exportPng);
 document.querySelector('#copySvgBtn').addEventListener('click', copySvg);
@@ -1294,7 +1376,7 @@ els.liveToggle.addEventListener('change', () => {
 
 els.templateSelect.addEventListener('change', () => {
   const key = els.templateSelect.value;
-  if (key && TEMPLATES[key]) replaceSource(TEMPLATES[key], `${key}.puml`);
+  if (key && TEMPLATES[key]) replaceSource(TEMPLATES[key], `${key}.puml`, { isNew: true });
   els.templateSelect.value = '';
 });
 
@@ -1302,20 +1384,84 @@ els.fileInput.addEventListener('change', async () => {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   const text = await file.text();
-  replaceSource(text, file.name);
+  replaceSource(text, file.name, { saved: true });
   els.fileInput.value = '';
 });
+
+let quickEditRecord = null;
+let quickEditTimer = null;
+
+function closeObjectQuickEdit() {
+  clearTimeout(quickEditTimer);
+  els.objectQuickEdit.hidden = true;
+  quickEditRecord = null;
+}
+
+function showObjectQuickEdit(event, record) {
+  if (!record || record.type !== 'element') return closeObjectQuickEdit();
+  const current = relocateNavigationTarget(record, canonicalSource()) || record;
+  const line = splitLines(canonicalSource())[current.line - 1] || current.statement || '';
+  const appearance = readObjectAppearance(line);
+  quickEditRecord = current;
+  els.quickEditTitle.textContent = `Quick edit • ${describeNavigationRecord(current)}`;
+  els.quickEditColor.value = appearance.color;
+  els.quickEditStyle.value = appearance.style;
+  const viewportRect = els.previewPane.getBoundingClientRect();
+  els.objectQuickEdit.style.left = `${Math.min(viewportRect.width - 280, Math.max(12, event.clientX - viewportRect.left + 14))}px`;
+  els.objectQuickEdit.style.top = `${Math.min(viewportRect.height - 190, Math.max(52, event.clientY - viewportRect.top + 14))}px`;
+  els.objectQuickEdit.hidden = false;
+}
+
+function scheduleObjectQuickEdit(event, record) {
+  clearTimeout(quickEditTimer);
+  if (!record || record.type !== 'element') return;
+  const point = { clientX: event.clientX, clientY: event.clientY };
+  quickEditTimer = setTimeout(() => showObjectQuickEdit(point, record), 450);
+}
+
+els.objectQuickEdit.addEventListener('submit', event => {
+  event.preventDefault();
+  if (!quickEditRecord) return;
+  const current = relocateNavigationTarget(quickEditRecord, canonicalSource()) || quickEditRecord;
+  const updated = updateObjectAppearance(canonicalSource(), current.line, {
+    color: els.quickEditColor.value,
+    style: els.quickEditStyle.value
+  });
+  if (updated === canonicalSource()) return closeObjectQuickEdit();
+  editHistory.checkpoint();
+  unfoldAllPreserveCaret();
+  els.editor.value = updated;
+  state.source = updated;
+  state.foldProjection = buildFoldProjection(updated, state.foldedStarts);
+  editHistory.checkpoint();
+  state.rendererDiagnostics = [];
+  updateEditorMeta();
+  scheduleRender();
+  els.renderStatus.textContent = 'Object appearance updated';
+  closeObjectQuickEdit();
+});
+
+els.quickEditClose.addEventListener('click', closeObjectQuickEdit);
+els.quickEditReset.addEventListener('click', () => {
+  els.quickEditColor.value = '';
+  els.quickEditStyle.value = '';
+});
+els.objectQuickEdit.addEventListener('pointerenter', () => clearTimeout(quickEditTimer));
+els.objectQuickEdit.addEventListener('pointerleave', () => { quickEditTimer = setTimeout(closeObjectQuickEdit, 300); });
 
 els.previewCanvas.addEventListener('click', navigateFromDiagram);
 els.previewCanvas.addEventListener('pointerover', event => {
   const record = renderedNavigationRecordFromEvent(event);
   if (!record) return;
+  scheduleObjectQuickEdit(event, record);
   els.navigationStatus.textContent = `Click to edit ${describeNavigationRecord(record)} • line ${record.line}`;
 });
 els.previewCanvas.addEventListener('pointerout', event => {
   const from = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
   const to = event.relatedTarget instanceof Element ? event.relatedTarget.closest('[data-source-nav-id]') : null;
   if (from && from === to) return;
+  clearTimeout(quickEditTimer);
+  if (!els.objectQuickEdit.matches(':hover')) quickEditTimer = setTimeout(closeObjectQuickEdit, 300);
   if (!els.navigationStatus.classList.contains('navigation-stale')) {
     els.navigationStatus.textContent = 'Click a diagram element to locate its source';
   }
@@ -1330,6 +1476,12 @@ els.previewViewport.addEventListener('wheel', event => {
 window.addEventListener('resize', () => {
   applyProblemsHeight(state.problemsHeight);
   if (state.zoom < 1) applyZoom();
+});
+
+window.addEventListener('beforeunload', event => {
+  if (!isSourceDirty()) return;
+  event.preventDefault();
+  event.returnValue = '';
 });
 
 async function init() {

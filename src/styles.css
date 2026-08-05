@@ -991,3 +991,23 @@ body.resizing-rows * { cursor: row-resize !important; user-select: none !importa
   font-size: 9.5px;
   line-height: 1.35;
 }
+
+.file-identity { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.file-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-status { padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 750; }
+.file-status.saved { color: #18794e; background: rgba(24, 121, 78, 0.13); }
+.file-status.unsaved { color: #9a6700; background: #fff1c2; }
+[data-theme="dark"] .file-status.unsaved { color: #ffd36b; background: rgba(255, 193, 7, 0.13); }
+.preview-pane { position: relative; }
+.object-quick-edit {
+  position: absolute; z-index: 45; width: 265px; padding: 11px; display: grid; gap: 9px;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.24);
+}
+.object-quick-edit[hidden] { display: none; }
+.quick-edit-heading, .quick-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.quick-edit-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-edit-heading button { min-width: 28px; padding: 2px 7px; }
+.object-quick-edit label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.object-quick-edit input { width: 100%; padding: 7px 8px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
+.quick-edit-actions { justify-content: flex-end; }

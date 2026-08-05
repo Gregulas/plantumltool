@@ -235,3 +235,13 @@ v1.5.3 keeps the editor caret, active selection, horizontal scroll, and vertical
 v1.5.4 adds a **Format** command for making nested PlantUML blocks easier to scan. Use the toolbar **Format** button or press **Ctrl/Cmd + Shift + F**. The formatter applies consistent two-space indentation while keeping statement order, comments, blank lines, and diagram semantics intact.
 
 It understands common PlantUML structures including sequence blocks (`alt`, `else`, `opt`, `loop`, `par`, `critical`, `group`, `box`), activity blocks (`if/else/endif`, `while/endwhile`, `repeat`, `fork`, `switch`), multiline notes, braces used by classes/components/skinparams/packages/nodes, and common preprocessor blocks. Formatting preserves the caret on the same logical source content and keeps the editor scroll position stable.
+
+
+### File workflow and diagram quick edit (v1.6.0)
+
+- The editor status bar shows the active file name and whether the source is **Saved**, **Modified • Save required**, or **New • Save required**. The browser tab also displays a leading status dot while changes are unsaved.
+- In browsers that support the File System Access API, **Open** keeps a writable handle to the selected source file. **Save** then writes directly back to that file without asking for a location again.
+- A new diagram, template, or browser-restored draft has no file handle. Its first **Save** opens the browser save picker for the location and file name; later saves write directly to that selected file.
+- Browsers without writable file handles fall back to normal file upload/download behavior. They cannot overwrite a local file silently, so a downloaded copy is used instead.
+- Hover over a navigable rendered object for a compact **Quick edit** card. The card can add, replace, or clear the object's PlantUML color token and stereotype/style marker. Applying the edit updates the source, participates in Undo/Redo, refreshes validation, and live-renders the diagram.
+- The page warns before closing or reloading when the current source requires saving.

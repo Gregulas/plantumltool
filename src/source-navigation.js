@@ -265,6 +265,21 @@ export function buildSourceNavigationIndex(source) {
         line,
         statement: raw
       }, ++sequence));
+      return;
+    }
+
+    // Sequence dividers render as labelled boxes, for example
+    // "== Initial offer ==". Index them explicitly so repeated words in later
+    // messages cannot steal diagram-to-source navigation.
+    const divider = trimmed.match(/^==+\s*(.*?)\s*==+$/);
+    if (divider?.[1]) {
+      records.push(makeRecord({
+        type: 'divider',
+        kind: 'sequence-divider',
+        label: divider[1].trim(),
+        line,
+        statement: raw
+      }, ++sequence));
     }
   });
 
@@ -317,6 +332,19 @@ export function resolveNavigationTarget(index, descriptor = {}) {
       const nested = resolveNavigationTarget({ ...index, records: lineRecords, byLine: new Map() }, { ...descriptor, sourceLine: null });
       return nested || lineRecords[0];
     }
+    // Native PlantUML source metadata is authoritative even for statements the
+    // semantic index does not classify. Preserve the exact line instead of
+    // falling through to ambiguous rendered-text matching.
+    const statement = index.lines?.[explicitLine - 1];
+    if (statement != null) {
+      return makeRecord({
+        type: 'source-line',
+        kind: 'source-line',
+        label: descriptor.clickedText || statement.trim(),
+        line: explicitLine,
+        statement
+      }, 0);
+    }
   }
 
   const { attrs, texts, clickedText } = descriptorValues(descriptor);
@@ -353,6 +381,7 @@ export function resolveNavigationTarget(index, descriptor = {}) {
     }
 
     if (record.type === 'member' && clickedText && canonicalNavigationText(record.memberLabel) === clickedText) score += 220;
+    if (record.type === 'divider' && clickedText && canonicalNavigationText(record.label) === clickedText) score += 260;
 
     if (score > bestScore) {
       bestScore = score;
