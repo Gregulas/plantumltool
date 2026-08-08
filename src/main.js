@@ -11,6 +11,7 @@ import { highlightPlantUml } from './syntax-highlight.js';
 import { createColorPicker } from './color-picker.js';
 import { readObjectAppearance, updateObjectAppearance } from './object-quick-edit.js';
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
+import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -180,9 +181,9 @@ app.innerHTML = `
             <button id="saveBtn" type="button"><span>Save</span><kbd>Ctrl/Cmd+S</kbd></button>
             <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>Ctrl/Cmd+Shift+S</kbd></button>
             <div class="menu-separator"></div>
-            <button id="copySvgBtn" type="button">Copy SVG</button>
-            <button id="exportSvgBtn" type="button">Export SVG…</button>
-            <button id="exportPngBtn" type="button">Export PNG…</button>
+            <button id="copySvgBtn" type="button"><span>Copy SVG</span><kbd>Ctrl/Cmd+Alt+C</kbd></button>
+            <button id="exportSvgBtn" type="button"><span>Export SVG…</span><kbd>Ctrl/Cmd+Alt+S</kbd></button>
+            <button id="exportPngBtn" type="button"><span>Export PNG…</span><kbd>Ctrl/Cmd+Alt+P</kbd></button>
           </div>
         </details>
         <details class="app-menu">
@@ -192,8 +193,8 @@ app.innerHTML = `
             <button id="redoMenuBtn" type="button"><span>Redo</span><kbd>Ctrl/Cmd+Y</kbd></button>
             <div class="menu-separator"></div>
             <button id="formatBtn" type="button"><span>Format script</span><kbd>Ctrl/Cmd+Shift+F</kbd></button>
-            <button id="foldAllBtn" type="button">Fold all blocks</button>
-            <button id="unfoldAllBtn" type="button">Unfold all blocks</button>
+            <button id="foldAllBtn" type="button"><span>Fold all blocks</span><kbd>Ctrl/Cmd+Alt+F</kbd></button>
+            <button id="unfoldAllBtn" type="button"><span>Unfold all blocks</span><kbd>Ctrl/Cmd+Alt+U</kbd></button>
           </div>
         </details>
         <details class="app-menu">
@@ -201,20 +202,20 @@ app.innerHTML = `
           <div class="menu-popover">
             <button id="renderMenuBtn" type="button"><span>Render</span><kbd>Ctrl/Cmd+Enter</kbd></button>
             <div class="menu-separator"></div>
-            ${Object.keys(TEMPLATES).map(key => `<button type="button" data-template="${key}">New ${key === 'state' ? 'state machine' : key} diagram</button>`).join('')}
+            ${Object.keys(TEMPLATES).map((key, index) => `<button type="button" data-template="${key}"><span>New ${key === 'state' ? 'state machine' : key} diagram</span><kbd>Ctrl/Cmd+Alt+${index + 1}</kbd></button>`).join('')}
           </div>
         </details>
         <details class="app-menu">
           <summary>View</summary>
           <div class="menu-popover">
-            <button id="zoomOutBtn" type="button">Zoom out</button>
-            <button id="zoomResetBtn" type="button">Actual size <span class="menu-value">100%</span></button>
-            <button id="zoomInBtn" type="button">Zoom in</button>
-            <button id="fitBtn" type="button">Fit diagram</button>
+            <button id="zoomOutBtn" type="button"><span>Zoom out</span><kbd>Ctrl/Cmd+-</kbd></button>
+            <button id="zoomResetBtn" type="button"><span>Actual size</span><kbd>Ctrl/Cmd+0</kbd></button>
+            <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>Ctrl/Cmd++</kbd></button>
+            <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>Ctrl/Cmd+Alt+0</kbd></button>
             <div class="menu-separator"></div>
-            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span></label>
-            <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span></label>
-            <button id="themeBtn" type="button"><span>Toggle dark theme</span><span aria-hidden="true">◐</span></button>
+            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>Ctrl/Cmd+Alt+A</kbd></label>
+            <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>Ctrl/Cmd+Alt+L</kbd></label>
+            <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>Ctrl/Cmd+Alt+T</kbd></button>
           </div>
         </details>
       </nav>
@@ -223,9 +224,20 @@ app.innerHTML = `
         <button id="redoBtn" class="icon-btn" type="button" title="Redo" aria-label="Redo">↷</button>
         <button id="quickSaveBtn" class="compact-save" type="button" title="Save">Save</button>
         <button id="renderBtn" class="primary compact-action" type="button">Render</button>
+        <button id="shortcutInfoBtn" class="icon-btn" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
       </div>
       <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
+
+    <dialog id="shortcutsDialog" class="shortcuts-dialog" aria-labelledby="shortcutsTitle">
+      <div class="shortcuts-heading">
+        <div><span class="shortcut-info-mark">?</span><div><h2 id="shortcutsTitle">Keyboard shortcuts</h2><p>Every PlantUML Studio action, at a glance.</p></div></div>
+        <button id="shortcutsCloseBtn" class="icon-btn" type="button" aria-label="Close shortcuts">×</button>
+      </div>
+      <div class="shortcuts-grid">
+        ${SHORTCUT_GROUPS.map(group => `<section><h3>${group.title}</h3>${group.items.map(([label, keys]) => `<div class="shortcut-row"><span>${label}</span><kbd>${keys}</kbd></div>`).join('')}</section>`).join('')}
+      </div>
+    </dialog>
 
     <main class="workspace">
       <section class="pane editor-pane">
@@ -1421,23 +1433,62 @@ document.addEventListener('pointerdown', event => {
   if (!event.target.closest('.app-menu')) closeMenus();
 });
 
+const shortcutsDialog = document.querySelector('#shortcutsDialog');
+function showShortcuts() {
+  closeMenus();
+  if (!shortcutsDialog.open) shortcutsDialog.showModal();
+}
+
+function toggleSetting(input) {
+  input.checked = !input.checked;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function runShortcut(action) {
+  const template = action?.startsWith('template-') ? action.slice('template-'.length) : null;
+  if (template && TEMPLATES[template]) return replaceSource(TEMPLATES[template], `${template}.puml`, { isNew: true });
+  const actions = {
+    new: () => replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }),
+    open: openSourceFile,
+    save: saveSource,
+    'save-as': saveSourceAs,
+    undo: editHistory.undo,
+    redo: editHistory.redo,
+    format: formatSource,
+    render: doRender,
+    'copy-svg': copySvg,
+    'export-svg': exportSvg,
+    'export-png': exportPng,
+    'fold-all': () => document.querySelector('#foldAllBtn').click(),
+    'unfold-all': () => document.querySelector('#unfoldAllBtn').click(),
+    'zoom-in': () => setZoom(state.zoom + 0.1),
+    'zoom-out': () => setZoom(state.zoom - 0.1),
+    'zoom-reset': () => setZoom(1),
+    fit: fitDiagram,
+    'toggle-autocomplete': () => toggleSetting(els.autocompleteToggle),
+    'toggle-live': () => toggleSetting(els.liveToggle),
+    'toggle-theme': () => document.querySelector('#themeBtn').click(),
+    'show-shortcuts': showShortcuts
+  };
+  return actions[action]?.();
+}
+
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
     closeMenus();
     return;
   }
-  if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-  const key = event.key.toLowerCase();
-  if (key === 'n') {
-    event.preventDefault();
-    replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true });
-  } else if (key === 'o') {
-    event.preventDefault();
-    openSourceFile();
-  } else if (key === 's' && event.shiftKey) {
-    event.preventDefault();
-    saveSourceAs();
-  }
+  if (event.defaultPrevented) return;
+  const action = shortcutAction(event);
+  if (!action) return;
+  event.preventDefault();
+  runShortcut(action);
+});
+
+document.querySelector('#shortcutInfoBtn').addEventListener('click', showShortcuts);
+document.querySelector('#shortcutsCloseBtn').addEventListener('click', () => shortcutsDialog.close());
+shortcutsDialog.addEventListener('click', event => {
+  if (event.target === shortcutsDialog) shortcutsDialog.close();
 });
 
 els.fileInput.addEventListener('change', async () => {
