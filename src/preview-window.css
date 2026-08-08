@@ -1,0 +1,22 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #172022; background: #f4f7f7; --bg:#f4f7f7; --surface:#fff; --surface-2:#f7fafa; --text:#172022; --muted:#68787a; --border:#d8e1e2; --accent:#169c9a; }
+:root[data-theme="dark"] { color:#e8eeee; background:#111718; --bg:#111718; --surface:#182021; --surface-2:#1c2627; --text:#e8eeee; --muted:#9dacad; --border:#314041; --accent:#3bc6c2; }
+* { box-sizing:border-box; }
+html,body,#previewApp { width:100%; height:100%; margin:0; overflow:hidden; }
+body { color:var(--text); background:var(--bg); }
+.detached-shell { height:100%; display:grid; grid-template-rows:auto 1fr auto; }
+header { min-height:54px; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--surface); border-bottom:1px solid var(--border); }
+.detached-brand { min-width:0; display:flex; align-items:center; gap:10px; }
+.detached-brand > span { width:34px; height:34px; flex:0 0 34px; display:grid; place-items:center; color:white; background:var(--accent); border-radius:9px; font-weight:850; }
+.detached-brand div { min-width:0; display:grid; gap:2px; }
+.detached-brand strong { overflow:hidden; font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.detached-brand small { color:var(--muted); font-size:10px; }
+.detached-actions { display:flex; gap:5px; }
+button { min-width:34px; min-height:34px; padding:6px 9px; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:7px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+#detachedViewport { min-height:0; overflow:auto; background-color:var(--surface); background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px); background-size:24px 24px; }
+#detachedCanvas { min-width:100%; min-height:100%; width:100%; height:100%; padding:32px; }
+#detachedCanvas svg { display:block; margin-inline:auto; filter:drop-shadow(0 8px 18px rgba(0,0,0,.08)); }
+.waiting { min-height:240px; display:grid; place-content:center; justify-items:center; gap:7px; color:var(--muted); text-align:center; }
+.waiting strong { color:var(--text); }
+.waiting span { font-size:12px; }
+footer { min-height:28px; padding:5px 10px; display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); background:var(--surface-2); border-top:1px solid var(--border); font-size:10.5px; }

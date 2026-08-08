@@ -15,6 +15,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState } from './detached-preview.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -215,6 +216,7 @@ app.innerHTML = `
             <button id="zoomResetBtn" type="button"><span>Actual size <span id="zoomValue" class="menu-value">100%</span></span><kbd>Ctrl/Cmd+0</kbd></button>
             <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>Ctrl/Cmd++</kbd></button>
             <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>Ctrl/Cmd+Alt+0</kbd></button>
+            <button id="detachedPreviewBtn" type="button"><span>Open detached preview</span><kbd>Ctrl/Cmd+Alt+W</kbd></button>
             <div class="menu-separator"></div>
             <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>Ctrl/Cmd+Alt+A</kbd></label>
             <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>Ctrl/Cmd+Alt+L</kbd></label>
@@ -379,6 +381,44 @@ const els = {
   quickEditClose: document.querySelector('#quickEditClose'),
   quickEditReset: document.querySelector('#quickEditReset')
 };
+
+let detachedPreviewWindow = null;
+const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(DETACHED_PREVIEW_CHANNEL) : null;
+
+function currentDetachedPreviewState() {
+  return detachedPreviewState({
+    svg: state.svg,
+    filename: state.filename,
+    dark: state.dark,
+    status: els.renderStatus?.textContent || 'Synchronized with editor'
+  });
+}
+
+function sendDetachedPreviewState(target = detachedPreviewWindow) {
+  const message = currentDetachedPreviewState();
+  detachedPreviewChannel?.postMessage(message);
+  if (target && !target.closed) target.postMessage(message, location.origin);
+}
+
+function openDetachedPreview() {
+  closeMenus();
+  const url = new URL('preview.html', document.baseURI);
+  detachedPreviewWindow = window.open(url, 'plantuml-studio-detached-preview', 'popup=yes,width=1100,height=760,resizable=yes,scrollbars=yes');
+  if (!detachedPreviewWindow) {
+    showError('The preview window was blocked. Allow pop-ups for this local PlantUML Studio page and try again.');
+    return;
+  }
+  detachedPreviewWindow.focus();
+  els.renderStatus.textContent = 'Detached preview opened — move it to another display';
+  setTimeout(() => sendDetachedPreviewState(), 150);
+}
+
+detachedPreviewChannel?.addEventListener('message', event => {
+  if (event.data?.type === 'detached-preview-ready') sendDetachedPreviewState();
+});
+window.addEventListener('message', event => {
+  if (event.origin === location.origin && event.data?.type === 'detached-preview-ready') sendDetachedPreviewState(event.source);
+});
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
 els.editor.value = state.foldProjection.text;
@@ -545,6 +585,7 @@ function keepLastValidPreview(reason = 'Invalid script') {
     els.renderStatus.textContent = reason;
     els.previewCanvas.innerHTML = `<div class="empty-state"><p>${escapeHtml(reason)}. Fix the script to create the first valid diagram.</p></div>`;
   }
+  sendDetachedPreviewState();
 }
 
 let debounceTimer;
@@ -611,6 +652,7 @@ async function doRender() {
     hideError();
     els.renderStatus.textContent = 'Rendered locally';
     renderDiagnostics();
+    sendDetachedPreviewState();
     return true;
   } catch (error) {
     if (seq !== state.renderSeq) return false;
@@ -1008,6 +1050,7 @@ function updateFileStatus() {
   els.fileStatus.classList.toggle('unsaved', dirty);
   els.fileStatus.classList.toggle('saved', !dirty);
   document.title = `${dirty ? '● ' : ''}${state.filename || 'diagram.puml'} • PlantUML Local Studio`;
+  sendDetachedPreviewState();
 }
 
 function updateEditorMeta() {
@@ -1217,6 +1260,7 @@ async function copySvg() {
 function applyTheme() {
   document.documentElement.dataset.theme = state.dark ? 'dark' : 'light';
   localStorage.setItem('plantuml-local-theme', state.dark ? 'dark' : 'light');
+  sendDetachedPreviewState();
 }
 
 const autocomplete = createAutocomplete({
@@ -1540,6 +1584,7 @@ function runShortcut(action) {
     'zoom-out': () => setZoom(state.zoom - 0.1),
     'zoom-reset': () => setZoom(1),
     fit: fitDiagram,
+    'open-detached-preview': openDetachedPreview,
     'toggle-autocomplete': () => toggleSetting(els.autocompleteToggle),
     'toggle-live': () => toggleSetting(els.liveToggle),
     'toggle-theme': () => document.querySelector('#themeBtn').click(),
@@ -1562,6 +1607,7 @@ document.addEventListener('keydown', event => {
 });
 
 document.querySelector('#shortcutInfoBtn').addEventListener('click', showShortcuts);
+document.querySelector('#detachedPreviewBtn').addEventListener('click', openDetachedPreview);
 document.querySelector('#shortcutsMenuBtn').addEventListener('click', showShortcuts);
 document.querySelector('#shortcutsCloseBtn').addEventListener('click', () => shortcutsDialog.close());
 shortcutsDialog.addEventListener('click', event => {
