@@ -15,6 +15,8 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState } from './detached-preview.js';
+import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -167,6 +169,8 @@ const state = {
 };
 
 const app = document.querySelector('#app');
+const shortcutPlatform = detectShortcutPlatform(navigator);
+const shortcutLabel = value => formatShortcutLabel(value, shortcutPlatform);
 app.innerHTML = `
   <div class="shell">
     <header class="topbar">
@@ -178,54 +182,55 @@ app.innerHTML = `
         <details class="app-menu">
           <summary>File</summary>
           <div class="menu-popover">
-            <button id="newBtn" type="button"><span>New</span><kbd>Ctrl/Cmd+N</kbd></button>
-            <button id="openBtn" type="button"><span>Open…</span><kbd>Ctrl/Cmd+O</kbd></button>
+            <button id="newBtn" type="button"><span>New</span><kbd>${shortcutLabel('Ctrl/Cmd+N')}</kbd></button>
+            <button id="openBtn" type="button"><span>Open…</span><kbd>${shortcutLabel('Ctrl/Cmd+O')}</kbd></button>
             <div class="menu-separator"></div>
-            <button id="saveBtn" type="button"><span>Save</span><kbd>Ctrl/Cmd+S</kbd></button>
-            <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>Ctrl/Cmd+Shift+S</kbd></button>
+            <button id="saveBtn" type="button"><span>Save</span><kbd>${shortcutLabel('Ctrl/Cmd+S')}</kbd></button>
+            <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+S')}</kbd></button>
             <div class="menu-separator"></div>
-            <button id="copySvgBtn" type="button"><span>Copy SVG</span><kbd>Ctrl/Cmd+Alt+C</kbd></button>
-            <button id="exportSvgBtn" type="button"><span>Export SVG…</span><kbd>Ctrl/Cmd+Alt+S</kbd></button>
-            <button id="exportPngBtn" type="button"><span>Export PNG…</span><kbd>Ctrl/Cmd+Alt+P</kbd></button>
+            <button id="copySvgBtn" type="button"><span>Copy SVG</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+C')}</kbd></button>
+            <button id="exportSvgBtn" type="button"><span>Export SVG…</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+S')}</kbd></button>
+            <button id="exportPngBtn" type="button"><span>Export PNG…</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+P')}</kbd></button>
           </div>
         </details>
         <details class="app-menu">
           <summary>Edit</summary>
           <div class="menu-popover">
-            <button id="undoMenuBtn" type="button"><span>Undo</span><kbd>Ctrl/Cmd+Z</kbd></button>
-            <button id="redoMenuBtn" type="button"><span>Redo</span><kbd>Ctrl/Cmd+Y</kbd></button>
+            <button id="undoMenuBtn" type="button"><span>Undo</span><kbd>${shortcutLabel('Ctrl/Cmd+Z')}</kbd></button>
+            <button id="redoMenuBtn" type="button"><span>Redo</span><kbd>${shortcutLabel('Ctrl/Cmd+Y')}</kbd></button>
             <div class="menu-separator"></div>
-            <button id="formatBtn" type="button"><span>Format script</span><kbd>Ctrl/Cmd+Shift+F</kbd></button>
-            <button id="foldAllBtn" type="button"><span>Fold all blocks</span><kbd>Ctrl/Cmd+Alt+F</kbd></button>
-            <button id="unfoldAllBtn" type="button"><span>Unfold all blocks</span><kbd>Ctrl/Cmd+Alt+U</kbd></button>
+            <button id="formatBtn" type="button"><span>Format script</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+F')}</kbd></button>
+            <button id="foldAllBtn" type="button"><span>Fold all blocks</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+F')}</kbd></button>
+            <button id="unfoldAllBtn" type="button"><span>Unfold all blocks</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+U')}</kbd></button>
           </div>
         </details>
         <details class="app-menu">
           <summary>Diagram</summary>
           <div class="menu-popover">
-            <button id="renderMenuBtn" type="button"><span>Render</span><kbd>Ctrl/Cmd+Enter</kbd></button>
+            <button id="renderMenuBtn" type="button"><span>Render</span><kbd>${shortcutLabel('Ctrl/Cmd+Enter')}</kbd></button>
             <div class="menu-separator"></div>
-            ${Object.keys(TEMPLATES).map((key, index) => `<button type="button" data-template="${key}"><span>New ${key === 'state' ? 'state machine' : key} diagram</span><kbd>Ctrl/Cmd+Alt+${index + 1}</kbd></button>`).join('')}
+            ${Object.keys(TEMPLATES).map((key, index) => `<button type="button" data-template="${key}"><span>New ${key === 'state' ? 'state machine' : key} diagram</span><kbd>${shortcutLabel(`Ctrl/Cmd+Alt+${index + 1}`)}</kbd></button>`).join('')}
           </div>
         </details>
         <details class="app-menu">
           <summary>View</summary>
           <div class="menu-popover">
-            <button id="zoomOutBtn" type="button"><span>Zoom out</span><kbd>Ctrl/Cmd+-</kbd></button>
-            <button id="zoomResetBtn" type="button"><span>Actual size <span id="zoomValue" class="menu-value">100%</span></span><kbd>Ctrl/Cmd+0</kbd></button>
-            <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>Ctrl/Cmd++</kbd></button>
-            <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>Ctrl/Cmd+Alt+0</kbd></button>
+            <button id="zoomOutBtn" type="button"><span>Zoom out</span><kbd>${shortcutLabel('Ctrl/Cmd+-')}</kbd></button>
+            <button id="zoomResetBtn" type="button"><span>Actual size <span id="zoomValue" class="menu-value">100%</span></span><kbd>${shortcutLabel('Ctrl/Cmd+0')}</kbd></button>
+            <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>${shortcutLabel('Ctrl/Cmd++')}</kbd></button>
+            <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+0')}</kbd></button>
+            <button id="detachedPreviewBtn" type="button"><span>Open detached preview</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+W')}</kbd></button>
             <div class="menu-separator"></div>
-            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>Ctrl/Cmd+Alt+A</kbd></label>
-            <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>Ctrl/Cmd+Alt+L</kbd></label>
-            <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>Ctrl/Cmd+Alt+T</kbd></button>
+            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+A')}</kbd></label>
+            <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+L')}</kbd></label>
+            <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+T')}</kbd></button>
           </div>
         </details>
         <details class="app-menu">
           <summary>Help</summary>
           <div class="menu-popover menu-popover-right">
-            <button id="shortcutsMenuBtn" type="button"><span>Keyboard shortcuts</span><kbd>Ctrl/Cmd+Alt+/</kbd></button>
-            <button id="aboutMenuBtn" type="button"><span>About PlantUML Studio</span><kbd>Ctrl/Cmd+Alt+I</kbd></button>
+            <button id="shortcutsMenuBtn" type="button"><span>Keyboard shortcuts</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+/')}</kbd></button>
+            <button id="aboutMenuBtn" type="button"><span>About PlantUML Studio</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+I')}</kbd></button>
           </div>
         </details>
       </nav>
@@ -245,7 +250,7 @@ app.innerHTML = `
         <button id="shortcutsCloseBtn" class="icon-btn" type="button" aria-label="Close shortcuts">×</button>
       </div>
       <div class="shortcuts-grid">
-        ${SHORTCUT_GROUPS.map(group => `<section><h3>${group.title}</h3>${group.items.map(([label, keys]) => `<div class="shortcut-row"><span>${label}</span><kbd>${keys}</kbd></div>`).join('')}</section>`).join('')}
+        ${SHORTCUT_GROUPS.map(group => `<section><h3>${group.title}</h3>${group.items.map(([label, keys]) => `<div class="shortcut-row"><span>${label}</span><kbd>${shortcutLabel(keys)}</kbd></div>`).join('')}</section>`).join('')}
       </div>
     </dialog>
 
@@ -379,6 +384,44 @@ const els = {
   quickEditClose: document.querySelector('#quickEditClose'),
   quickEditReset: document.querySelector('#quickEditReset')
 };
+
+let detachedPreviewWindow = null;
+const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(DETACHED_PREVIEW_CHANNEL) : null;
+
+function currentDetachedPreviewState() {
+  return detachedPreviewState({
+    svg: state.svg,
+    filename: state.filename,
+    dark: state.dark,
+    status: els.renderStatus?.textContent || 'Synchronized with editor'
+  });
+}
+
+function sendDetachedPreviewState(target = detachedPreviewWindow) {
+  const message = currentDetachedPreviewState();
+  detachedPreviewChannel?.postMessage(message);
+  if (target && !target.closed) target.postMessage(message, location.origin);
+}
+
+function openDetachedPreview() {
+  closeMenus();
+  const url = new URL('preview.html', document.baseURI);
+  detachedPreviewWindow = window.open(url, 'plantuml-studio-detached-preview', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+  if (!detachedPreviewWindow) {
+    showError('The preview window was blocked. Allow pop-ups for this local PlantUML Studio page and try again.');
+    return;
+  }
+  detachedPreviewWindow.focus();
+  els.renderStatus.textContent = 'Detached preview opened — move it to another display';
+  setTimeout(() => sendDetachedPreviewState(), 150);
+}
+
+detachedPreviewChannel?.addEventListener('message', event => {
+  if (event.data?.type === 'detached-preview-ready') sendDetachedPreviewState();
+});
+window.addEventListener('message', event => {
+  if (event.origin === location.origin && event.data?.type === 'detached-preview-ready') sendDetachedPreviewState(event.source);
+});
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
 els.editor.value = state.foldProjection.text;
@@ -545,6 +588,7 @@ function keepLastValidPreview(reason = 'Invalid script') {
     els.renderStatus.textContent = reason;
     els.previewCanvas.innerHTML = `<div class="empty-state"><p>${escapeHtml(reason)}. Fix the script to create the first valid diagram.</p></div>`;
   }
+  sendDetachedPreviewState();
 }
 
 let debounceTimer;
@@ -611,6 +655,7 @@ async function doRender() {
     hideError();
     els.renderStatus.textContent = 'Rendered locally';
     renderDiagnostics();
+    sendDetachedPreviewState();
     return true;
   } catch (error) {
     if (seq !== state.renderSeq) return false;
@@ -1008,6 +1053,7 @@ function updateFileStatus() {
   els.fileStatus.classList.toggle('unsaved', dirty);
   els.fileStatus.classList.toggle('saved', !dirty);
   document.title = `${dirty ? '● ' : ''}${state.filename || 'diagram.puml'} • PlantUML Local Studio`;
+  sendDetachedPreviewState();
 }
 
 function updateEditorMeta() {
@@ -1217,6 +1263,7 @@ async function copySvg() {
 function applyTheme() {
   document.documentElement.dataset.theme = state.dark ? 'dark' : 'light';
   localStorage.setItem('plantuml-local-theme', state.dark ? 'dark' : 'light');
+  sendDetachedPreviewState();
 }
 
 const autocomplete = createAutocomplete({
@@ -1540,6 +1587,7 @@ function runShortcut(action) {
     'zoom-out': () => setZoom(state.zoom - 0.1),
     'zoom-reset': () => setZoom(1),
     fit: fitDiagram,
+    'open-detached-preview': openDetachedPreview,
     'toggle-autocomplete': () => toggleSetting(els.autocompleteToggle),
     'toggle-live': () => toggleSetting(els.liveToggle),
     'toggle-theme': () => document.querySelector('#themeBtn').click(),
@@ -1562,6 +1610,7 @@ document.addEventListener('keydown', event => {
 });
 
 document.querySelector('#shortcutInfoBtn').addEventListener('click', showShortcuts);
+document.querySelector('#detachedPreviewBtn').addEventListener('click', openDetachedPreview);
 document.querySelector('#shortcutsMenuBtn').addEventListener('click', showShortcuts);
 document.querySelector('#shortcutsCloseBtn').addEventListener('click', () => shortcutsDialog.close());
 shortcutsDialog.addEventListener('click', event => {

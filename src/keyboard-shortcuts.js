@@ -17,7 +17,7 @@ export const SHORTCUT_GROUPS = [
   ] },
   { title: 'View', items: [
     ['Zoom in', 'Ctrl/Cmd++'], ['Zoom out', 'Ctrl/Cmd+-'], ['Actual size', 'Ctrl/Cmd+0'],
-    ['Fit diagram', 'Ctrl/Cmd+Alt+0'], ['Toggle autocomplete', 'Ctrl/Cmd+Alt+A'],
+    ['Fit diagram', 'Ctrl/Cmd+Alt+0'], ['Open detached preview', 'Ctrl/Cmd+Alt+W'], ['Toggle autocomplete', 'Ctrl/Cmd+Alt+A'],
     ['Toggle live render', 'Ctrl/Cmd+Alt+L'], ['Toggle theme', 'Ctrl/Cmd+Alt+T'],
     ['Shortcut info', 'Ctrl/Cmd+Alt+/'], ['About PlantUML Studio', 'Ctrl/Cmd+Alt+I']
   ] }
@@ -26,7 +26,7 @@ export const SHORTCUT_GROUPS = [
 const ALT_CODE_ACTIONS = {
   KeyC: 'copy-svg', KeyS: 'export-svg', KeyP: 'export-png',
   KeyF: 'fold-all', KeyU: 'unfold-all', Digit0: 'fit',
-  KeyA: 'toggle-autocomplete', KeyL: 'toggle-live', KeyT: 'toggle-theme', KeyI: 'show-about',
+  KeyA: 'toggle-autocomplete', KeyL: 'toggle-live', KeyT: 'toggle-theme', KeyI: 'show-about', KeyW: 'open-detached-preview',
   Slash: 'show-shortcuts', Digit1: 'template-sequence', Digit2: 'template-class',
   Digit3: 'template-component', Digit4: 'template-activity',
   Digit5: 'template-state', Digit6: 'template-deployment'
