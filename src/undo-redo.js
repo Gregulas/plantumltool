@@ -125,71 +125,14 @@ function createHistory(editor) {
   };
 }
 
-function makeButton(label, title, icon) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'history-button';
-  button.textContent = icon;
-  button.title = title;
-  button.setAttribute('aria-label', label);
-  return button;
-}
-
-function installStyles() {
-  const style = document.createElement('style');
-  style.textContent = `
-    .history-controls {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .history-button {
-      min-width: 2rem;
-      min-height: 2rem;
-      padding: 0.3rem 0.55rem;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: 0.35rem;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-    }
-    .history-button:hover:not(:disabled) {
-      background: color-mix(in srgb, currentColor 10%, transparent);
-    }
-    .history-button:focus-visible {
-      outline: 2px solid currentColor;
-      outline-offset: 2px;
-    }
-    .history-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.4;
-    }
-  `;
-  document.head.append(style);
-}
-
 function installControls(editor, history) {
-  const controls = document.createElement('span');
-  controls.className = 'history-controls';
-  controls.setAttribute('aria-label', 'Edit history');
-
-  const undoButton = makeButton('Undo', 'Undo (Ctrl/Cmd+Z)', '↶');
-  const redoButton = makeButton('Redo', 'Redo (Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z)', '↷');
-  controls.append(undoButton, redoButton);
-
-  const toolbar = document.querySelector('[role="toolbar"], .toolbar, .app-toolbar, header');
-  if (toolbar) {
-    toolbar.append(controls);
-  } else {
-    editor.parentElement?.insertBefore(controls, editor);
-  }
-
-  undoButton.addEventListener('click', history.undo);
-  redoButton.addEventListener('click', history.redo);
+  const undoButtons = [...document.querySelectorAll('#undoBtn, #undoMenuBtn')];
+  const redoButtons = [...document.querySelectorAll('#redoBtn, #redoMenuBtn')];
+  undoButtons.forEach(button => button.addEventListener('click', history.undo));
+  redoButtons.forEach(button => button.addEventListener('click', history.redo));
   history.subscribe(({ canUndo, canRedo }) => {
-    undoButton.disabled = !canUndo;
-    redoButton.disabled = !canRedo;
+    undoButtons.forEach(button => { button.disabled = !canUndo; });
+    redoButtons.forEach(button => { button.disabled = !canRedo; });
   });
 }
 
@@ -211,7 +154,6 @@ function installKeyboardShortcuts(editor, history) {
 export function installUndoRedo(editor = findEditor()) {
   if (!editor) throw new Error('Undo/redo requires a source textarea.');
 
-  installStyles();
   const history = createHistory(editor);
   installControls(editor, history);
   installKeyboardShortcuts(editor, history);
