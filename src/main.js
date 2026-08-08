@@ -15,7 +15,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
-import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState } from './detached-preview.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 
 const DEFAULT_SOURCE = `@startuml
@@ -386,6 +386,10 @@ const els = {
 };
 
 let detachedPreviewWindow = null;
+let detachedPreviewClosePoll = null;
+let detachedPreviewRestoreTimer = null;
+const detachedPreviewLastSeen = new Map();
+const DETACHED_PREVIEW_LEASE_MS = 1750;
 const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(DETACHED_PREVIEW_CHANNEL) : null;
 
 function currentDetachedPreviewState() {
@@ -403,6 +407,70 @@ function sendDetachedPreviewState(target = detachedPreviewWindow) {
   if (target && !target.closed) target.postMessage(message, location.origin);
 }
 
+function setDetachedEditorLayout(active) {
+  const wasActive = els.workspace.classList.contains('detached-preview-active');
+  els.workspace.classList.toggle('detached-preview-active', active);
+  document.querySelector('#detachedPreviewBtn').setAttribute('aria-pressed', String(active));
+  if (active) {
+    closeObjectQuickEdit();
+    els.editor.focus({ preventScroll: true });
+    return;
+  }
+  if (!wasActive) return;
+  requestAnimationFrame(() => {
+    applyWorkspaceSplit(state.workspaceSplit);
+    applyProblemsHeight(state.problemsHeight);
+    fitDiagram();
+    els.renderStatus.textContent = 'Detached preview closed — embedded diagram restored and fitted';
+  });
+}
+
+function monitorDetachedPreviewWindow() {
+  clearInterval(detachedPreviewClosePoll);
+  detachedPreviewClosePoll = setInterval(() => {
+    if (detachedPreviewWindow && !detachedPreviewWindow.closed) return;
+    clearInterval(detachedPreviewClosePoll);
+    detachedPreviewClosePoll = null;
+    detachedPreviewWindow = null;
+    detachedPreviewLastSeen.clear();
+    setDetachedEditorLayout(false);
+  }, 500);
+}
+
+function touchDetachedPreview(previewId) {
+  detachedPreviewLastSeen.set(previewId, Date.now());
+}
+
+function restoreEmbeddedPreviewWhenDetachedWindowsClose() {
+  if (detachedPreviewLastSeen.size) return;
+  clearTimeout(detachedPreviewRestoreTimer);
+  detachedPreviewRestoreTimer = setTimeout(() => setDetachedEditorLayout(false), 250);
+}
+
+function handleDetachedPreviewLifecycle(message, target = null) {
+  if (isDetachedPreviewLifecycle(message, 'detached-preview-ready')) {
+    clearTimeout(detachedPreviewRestoreTimer);
+    touchDetachedPreview(message.previewId);
+    setDetachedEditorLayout(true);
+    sendDetachedPreviewState(target || detachedPreviewWindow);
+  } else if (isDetachedPreviewLifecycle(message, 'detached-preview-heartbeat')) {
+    clearTimeout(detachedPreviewRestoreTimer);
+    touchDetachedPreview(message.previewId);
+    setDetachedEditorLayout(true);
+  } else if (isDetachedPreviewLifecycle(message, 'detached-preview-closed')) {
+    detachedPreviewLastSeen.delete(message.previewId);
+    restoreEmbeddedPreviewWhenDetachedWindowsClose();
+  }
+}
+
+setInterval(() => {
+  const expiredBefore = Date.now() - DETACHED_PREVIEW_LEASE_MS;
+  for (const [previewId, lastSeen] of detachedPreviewLastSeen) {
+    if (lastSeen < expiredBefore) detachedPreviewLastSeen.delete(previewId);
+  }
+  restoreEmbeddedPreviewWhenDetachedWindowsClose();
+}, 500);
+
 function openDetachedPreview() {
   closeMenus();
   const url = new URL('preview.html', document.baseURI);
@@ -412,15 +480,17 @@ function openDetachedPreview() {
     return;
   }
   detachedPreviewWindow.focus();
+  setDetachedEditorLayout(true);
+  monitorDetachedPreviewWindow();
   els.renderStatus.textContent = 'Detached preview opened — move it to another display';
   setTimeout(() => sendDetachedPreviewState(), 150);
 }
 
 detachedPreviewChannel?.addEventListener('message', event => {
-  if (event.data?.type === 'detached-preview-ready') sendDetachedPreviewState();
+  handleDetachedPreviewLifecycle(event.data);
 });
 window.addEventListener('message', event => {
-  if (event.origin === location.origin && event.data?.type === 'detached-preview-ready') sendDetachedPreviewState(event.source);
+  if (event.origin === location.origin) handleDetachedPreviewLifecycle(event.data, event.source);
 });
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);

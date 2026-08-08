@@ -1,6 +1,6 @@
 import './preview-window.css';
 import { APP_VERSION } from './app-version.js';
-import { DETACHED_PREVIEW_CHANNEL, isDetachedPreviewState } from './detached-preview.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewLifecycle, isDetachedPreviewState } from './detached-preview.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { availableScreenBounds, isNearBounds } from './window-sizing.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
@@ -32,6 +32,7 @@ const els = {
 };
 let zoom = 1;
 let currentMessage = null;
+const previewId = crypto.randomUUID?.() || `preview-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 let maximized = false;
 let resizingProgrammatically = false;
 let restoreBounds = null;
@@ -84,9 +85,25 @@ window.addEventListener('message', event => {
 });
 
 function requestState() {
-  const ready = { type: 'detached-preview-ready' };
+  const ready = detachedPreviewLifecycle('detached-preview-ready', previewId);
   channel?.postMessage(ready);
   window.opener?.postMessage(ready, location.origin);
+}
+
+function sendHeartbeat() {
+  const heartbeat = detachedPreviewLifecycle('detached-preview-heartbeat', previewId);
+  channel?.postMessage(heartbeat);
+  window.opener?.postMessage(heartbeat, location.origin);
+}
+
+const heartbeatTimer = setInterval(sendHeartbeat, 500);
+
+function notifyClosed() {
+  clearInterval(heartbeatTimer);
+  const closed = detachedPreviewLifecycle('detached-preview-closed', previewId);
+  channel?.postMessage(closed);
+  window.opener?.postMessage(closed, location.origin);
+  channel?.close();
 }
 
 function setMaximizeButton() {
@@ -145,6 +162,7 @@ window.addEventListener('keydown', event => {
     toggleMaximize();
   }
 });
-window.addEventListener('beforeunload', () => channel?.close());
+window.addEventListener('beforeunload', notifyClosed);
 requestState();
+sendHeartbeat();
 setTimeout(requestState, 250);
