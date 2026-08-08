@@ -13,7 +13,8 @@ import { readObjectAppearance, updateObjectAppearance } from './object-quick-edi
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
 import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
-import { suggestedSourceFilename } from './file-naming.js';
+import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
+import { APP_VERSION } from './app-version.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -220,6 +221,13 @@ app.innerHTML = `
             <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>Ctrl/Cmd+Alt+T</kbd></button>
           </div>
         </details>
+        <details class="app-menu">
+          <summary>Help</summary>
+          <div class="menu-popover menu-popover-right">
+            <button id="shortcutsMenuBtn" type="button"><span>Keyboard shortcuts</span><kbd>Ctrl/Cmd+Alt+/</kbd></button>
+            <button id="aboutMenuBtn" type="button"><span>About PlantUML Studio</span><kbd>Ctrl/Cmd+Alt+I</kbd></button>
+          </div>
+        </details>
       </nav>
       <div class="top-actions" aria-label="Quick actions">
         <button id="undoBtn" class="icon-btn" type="button" title="Undo" aria-label="Undo">↶</button>
@@ -239,6 +247,28 @@ app.innerHTML = `
       <div class="shortcuts-grid">
         ${SHORTCUT_GROUPS.map(group => `<section><h3>${group.title}</h3>${group.items.map(([label, keys]) => `<div class="shortcut-row"><span>${label}</span><kbd>${keys}</kbd></div>`).join('')}</section>`).join('')}
       </div>
+    </dialog>
+
+    <dialog id="aboutDialog" class="info-dialog" aria-labelledby="aboutTitle">
+      <div class="info-dialog-heading"><span class="brand-mark">PU</span><button id="aboutCloseBtn" class="icon-btn" type="button" aria-label="Close About">×</button></div>
+      <div class="info-dialog-body">
+        <h2 id="aboutTitle">PlantUML Studio</h2>
+        <p class="version-badge">Version ${APP_VERSION}</p>
+        <p>A fully local PlantUML editor and JavaScript renderer. Diagram source stays in your browser unless you explicitly save or export it.</p>
+        <p class="about-engine">Rendering engine: @plantuml/core 1.2026.6</p>
+      </div>
+    </dialog>
+
+    <dialog id="saveAsDialog" class="info-dialog save-as-dialog" aria-labelledby="saveAsTitle">
+      <form id="saveAsFallbackForm">
+        <div class="info-dialog-heading"><strong id="saveAsTitle">Save diagram as</strong><button id="saveAsCloseBtn" class="icon-btn" type="button" aria-label="Close Save As">×</button></div>
+        <div class="info-dialog-body">
+          <label for="saveAsName">File name</label>
+          <input id="saveAsName" type="text" required autocomplete="off" />
+          <p>This browser does not support choosing a save folder from a web app. The file will use your browser’s Downloads location, or its “ask where to save” setting.</p>
+          <div class="dialog-actions"><button id="saveAsCancelBtn" type="button">Cancel</button><button class="primary" type="submit">Download</button></div>
+        </div>
+      </form>
     </dialog>
 
     <main class="workspace">
@@ -1090,9 +1120,9 @@ async function saveSource() {
 }
 
 async function saveSourceAs() {
+  const suggestedName = suggestedSourceFilename(canonicalSource(), state.filename);
   try {
-    const suggestedName = suggestedSourceFilename(canonicalSource(), state.filename);
-    if ('showSaveFilePicker' in window) {
+    if (typeof window.showSaveFilePicker === 'function') {
       els.renderStatus.textContent = 'Choose a file name and save location…';
       const handle = await window.showSaveFilePicker({
         suggestedName,
@@ -1101,14 +1131,14 @@ async function saveSourceAs() {
       });
       return await writeSourceToHandle(handle);
     }
-    downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', suggestedName);
-    state.filename = suggestedName;
-    state.savedSource = canonicalSource();
-    state.isNewFile = false;
-    updateFileStatus();
-    els.renderStatus.textContent = 'Downloaded source (this browser cannot choose a save location directly)';
+    showFallbackSaveAs(suggestedName);
   } catch (error) {
-    if (error?.name !== 'AbortError') showError(`Save As failed. ${error?.message || error}`);
+    if (error?.name === 'AbortError') return;
+    if (isSavePickerUnavailableError(error)) {
+      showFallbackSaveAs(suggestedName);
+      return;
+    }
+    showError(`Save As failed. ${error?.message || error}`);
   }
 }
 
@@ -1461,9 +1491,27 @@ document.addEventListener('pointerdown', event => {
 });
 
 const shortcutsDialog = document.querySelector('#shortcutsDialog');
+const aboutDialog = document.querySelector('#aboutDialog');
+const saveAsDialog = document.querySelector('#saveAsDialog');
+const saveAsName = document.querySelector('#saveAsName');
 function showShortcuts() {
   closeMenus();
   if (!shortcutsDialog.open) shortcutsDialog.showModal();
+}
+
+function showAbout() {
+  closeMenus();
+  if (!aboutDialog.open) aboutDialog.showModal();
+}
+
+function showFallbackSaveAs(suggestedName) {
+  closeMenus();
+  saveAsName.value = suggestedName;
+  if (!saveAsDialog.open) saveAsDialog.showModal();
+  requestAnimationFrame(() => {
+    saveAsName.focus();
+    saveAsName.select();
+  });
 }
 
 function toggleSetting(input) {
@@ -1495,7 +1543,8 @@ function runShortcut(action) {
     'toggle-autocomplete': () => toggleSetting(els.autocompleteToggle),
     'toggle-live': () => toggleSetting(els.liveToggle),
     'toggle-theme': () => document.querySelector('#themeBtn').click(),
-    'show-shortcuts': showShortcuts
+    'show-shortcuts': showShortcuts,
+    'show-about': showAbout
   };
   return actions[action]?.();
 }
@@ -1513,9 +1562,28 @@ document.addEventListener('keydown', event => {
 });
 
 document.querySelector('#shortcutInfoBtn').addEventListener('click', showShortcuts);
+document.querySelector('#shortcutsMenuBtn').addEventListener('click', showShortcuts);
 document.querySelector('#shortcutsCloseBtn').addEventListener('click', () => shortcutsDialog.close());
 shortcutsDialog.addEventListener('click', event => {
   if (event.target === shortcutsDialog) shortcutsDialog.close();
+});
+document.querySelector('#aboutMenuBtn').addEventListener('click', showAbout);
+document.querySelector('#aboutCloseBtn').addEventListener('click', () => aboutDialog.close());
+aboutDialog.addEventListener('click', event => {
+  if (event.target === aboutDialog) aboutDialog.close();
+});
+document.querySelector('#saveAsCloseBtn').addEventListener('click', () => saveAsDialog.close());
+document.querySelector('#saveAsCancelBtn').addEventListener('click', () => saveAsDialog.close());
+document.querySelector('#saveAsFallbackForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const filename = suggestedSourceFilename('', saveAsName.value);
+  downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', filename);
+  state.filename = filename;
+  state.savedSource = canonicalSource();
+  state.isNewFile = false;
+  updateFileStatus();
+  saveAsDialog.close();
+  els.renderStatus.textContent = `Downloaded ${filename}`;
 });
 
 els.fileInput.addEventListener('change', async () => {

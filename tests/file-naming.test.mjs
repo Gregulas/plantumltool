@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diagramTitle, safeFileStem, suggestedSourceFilename } from '../src/file-naming.js';
+import { diagramTitle, isSavePickerUnavailableError, safeFileStem, suggestedSourceFilename } from '../src/file-naming.js';
 
 test('uses an inline PlantUML title for the suggested source filename', () => {
   const source = '@startuml\ntitle Create new Application - Update SPL\n@enduml';
@@ -19,4 +19,11 @@ test('sanitizes characters that are unsafe in filenames', () => {
 
 test('falls back to the current filename when no diagram title exists', () => {
   assert.equal(suggestedSourceFilename('@startuml\n@enduml', 'existing-flow.plantuml'), 'existing-flow.puml');
+});
+
+test('recognizes native picker availability failures but not user cancellation', () => {
+  assert.equal(isSavePickerUnavailableError({ name: 'NotSupportedError' }), true);
+  assert.equal(isSavePickerUnavailableError({ name: 'SecurityError' }), true);
+  assert.equal(isSavePickerUnavailableError({ name: 'TypeError' }), true);
+  assert.equal(isSavePickerUnavailableError({ name: 'AbortError' }), false);
 });

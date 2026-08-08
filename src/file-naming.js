@@ -40,3 +40,7 @@ export function suggestedSourceFilename(source, currentFilename = 'diagram.puml'
   const currentStem = String(currentFilename || '').replace(/\.(puml|plantuml|pu|txt)$/i, '');
   return `${safeFileStem(diagramTitle(source), safeFileStem(currentStem))}.puml`;
 }
+
+export function isSavePickerUnavailableError(error) {
+  return ['NotSupportedError', 'SecurityError', 'TypeError'].includes(error?.name);
+}
