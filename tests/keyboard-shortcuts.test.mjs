@@ -1,15 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { zoomShortcutAction } from '../src/keyboard-shortcuts.js';
+import { SHORTCUT_GROUPS, shortcutAction } from '../src/keyboard-shortcuts.js';
 
-test('maps standard Ctrl/Cmd zoom shortcuts', () => {
-  assert.equal(zoomShortcutAction({ ctrlKey: true, metaKey: false, altKey: false, key: '+' }), 'in');
-  assert.equal(zoomShortcutAction({ ctrlKey: true, metaKey: false, altKey: false, key: '=' }), 'in');
-  assert.equal(zoomShortcutAction({ ctrlKey: false, metaKey: true, altKey: false, key: '-' }), 'out');
-  assert.equal(zoomShortcutAction({ ctrlKey: false, metaKey: true, altKey: false, key: '0' }), 'reset');
+const event = (key, options = {}) => ({
+  key, code: options.code || '', ctrlKey: options.ctrlKey ?? true,
+  metaKey: options.metaKey ?? false, altKey: options.altKey ?? false,
+  shiftKey: options.shiftKey ?? false
 });
 
-test('ignores unmodified and Alt-modified zoom keys', () => {
-  assert.equal(zoomShortcutAction({ ctrlKey: false, metaKey: false, altKey: false, key: '+' }), null);
-  assert.equal(zoomShortcutAction({ ctrlKey: true, metaKey: false, altKey: true, key: '-' }), null);
+test('maps standard file, editing, rendering, and zoom shortcuts', () => {
+  assert.equal(shortcutAction(event('n')), 'new');
+  assert.equal(shortcutAction(event('s', { shiftKey: true })), 'save-as');
+  assert.equal(shortcutAction(event('z', { shiftKey: true })), 'redo');
+  assert.equal(shortcutAction(event('Enter')), 'render');
+  assert.equal(shortcutAction(event('=')), 'zoom-in');
+  assert.equal(shortcutAction(event('-')), 'zoom-out');
+  assert.equal(shortcutAction(event('0')), 'zoom-reset');
+});
+
+test('maps alternate shortcuts by physical key code', () => {
+  assert.equal(shortcutAction(event('ç', { altKey: true, code: 'KeyC' })), 'copy-svg');
+  assert.equal(shortcutAction(event('¡', { altKey: true, code: 'Digit1' })), 'template-sequence');
+  assert.equal(shortcutAction(event('?', { altKey: true, code: 'Slash', metaKey: true, ctrlKey: false })), 'show-shortcuts');
+});
+
+test('ignores keys without Ctrl or Command and documents every action', () => {
+  assert.equal(shortcutAction(event('+', { ctrlKey: false })), null);
+  assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 27);
 });
