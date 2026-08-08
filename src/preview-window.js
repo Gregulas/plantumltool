@@ -3,6 +3,10 @@ import { APP_VERSION } from './app-version.js';
 import { DETACHED_PREVIEW_CHANNEL, isDetachedPreviewState } from './detached-preview.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { availableScreenBounds, isNearBounds } from './window-sizing.js';
+import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
+
+const shortcutPlatform = detectShortcutPlatform(navigator);
+const shortcutLabel = value => formatShortcutLabel(value, shortcutPlatform);
 
 document.querySelector('#previewApp').innerHTML = `
   <div class="detached-shell">
@@ -13,7 +17,7 @@ document.querySelector('#previewApp').innerHTML = `
         <button id="zoomReset" type="button">100%</button>
         <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
         <button id="zoomFit" type="button">Fit</button>
-        <button id="windowSize" type="button" title="Maximize or restore window (Ctrl/Cmd+Shift+M)" aria-label="Maximize window">□ <span>Maximize</span></button>
+        <button id="windowSize" type="button" title="Maximize or restore window (${shortcutLabel('Ctrl/Cmd+Shift+M')})" aria-label="Maximize window">□ <span>Maximize</span></button>
       </div>
     </header>
     <main id="detachedViewport"><div id="detachedCanvas"><div class="waiting"><strong>Waiting for the editor…</strong><span>Keep the PlantUML Studio editor window open.</span></div></div></main>
