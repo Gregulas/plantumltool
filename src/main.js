@@ -13,6 +13,7 @@ import { readObjectAppearance, updateObjectAppearance } from './object-quick-edi
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
 import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
+import { suggestedSourceFilename } from './file-naming.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -1064,7 +1065,7 @@ function downloadBlob(content, mime, filename) {
 }
 
 function baseName() {
-  return (state.filename || 'diagram.puml').replace(/\.(puml|plantuml|pu|txt)$/i, '') || 'diagram';
+  return suggestedSourceFilename(canonicalSource(), state.filename).replace(/\.puml$/i, '') || 'diagram';
 }
 
 async function writeSourceToHandle(handle) {
@@ -1090,18 +1091,22 @@ async function saveSource() {
 
 async function saveSourceAs() {
   try {
+    const suggestedName = suggestedSourceFilename(canonicalSource(), state.filename);
     if ('showSaveFilePicker' in window) {
+      els.renderStatus.textContent = 'Choose a file name and save location…';
       const handle = await window.showSaveFilePicker({
-        suggestedName: state.filename || 'diagram.puml',
+        suggestedName,
+        startIn: 'documents',
         types: [{ description: 'PlantUML source', accept: { 'text/plain': ['.puml', '.plantuml', '.pu', '.txt'] } }]
       });
       return await writeSourceToHandle(handle);
     }
-    downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', `${baseName()}.puml`);
+    downloadBlob(canonicalSource(), 'text/plain;charset=utf-8', suggestedName);
+    state.filename = suggestedName;
     state.savedSource = canonicalSource();
     state.isNewFile = false;
     updateFileStatus();
-    els.renderStatus.textContent = 'Downloaded source (browser cannot overwrite files directly)';
+    els.renderStatus.textContent = 'Downloaded source (this browser cannot choose a save location directly)';
   } catch (error) {
     if (error?.name !== 'AbortError') showError(`Save As failed. ${error?.message || error}`);
   }
