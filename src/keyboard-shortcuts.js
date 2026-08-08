@@ -19,14 +19,14 @@ export const SHORTCUT_GROUPS = [
     ['Zoom in', 'Ctrl/Cmd++'], ['Zoom out', 'Ctrl/Cmd+-'], ['Actual size', 'Ctrl/Cmd+0'],
     ['Fit diagram', 'Ctrl/Cmd+Alt+0'], ['Toggle autocomplete', 'Ctrl/Cmd+Alt+A'],
     ['Toggle live render', 'Ctrl/Cmd+Alt+L'], ['Toggle theme', 'Ctrl/Cmd+Alt+T'],
-    ['Shortcut info', 'Ctrl/Cmd+Alt+/']
+    ['Shortcut info', 'Ctrl/Cmd+Alt+/'], ['About PlantUML Studio', 'Ctrl/Cmd+Alt+I']
   ] }
 ];
 
 const ALT_CODE_ACTIONS = {
   KeyC: 'copy-svg', KeyS: 'export-svg', KeyP: 'export-png',
   KeyF: 'fold-all', KeyU: 'unfold-all', Digit0: 'fit',
-  KeyA: 'toggle-autocomplete', KeyL: 'toggle-live', KeyT: 'toggle-theme',
+  KeyA: 'toggle-autocomplete', KeyL: 'toggle-live', KeyT: 'toggle-theme', KeyI: 'show-about',
   Slash: 'show-shortcuts', Digit1: 'template-sequence', Digit2: 'template-class',
   Digit3: 'template-component', Digit4: 'template-activity',
   Digit5: 'template-state', Digit6: 'template-deployment'

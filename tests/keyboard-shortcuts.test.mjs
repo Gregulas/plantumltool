@@ -26,5 +26,5 @@ test('maps alternate shortcuts by physical key code', () => {
 
 test('ignores keys without Ctrl or Command and documents every action', () => {
   assert.equal(shortcutAction(event('+', { ctrlKey: false })), null);
-  assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 27);
+  assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 28);
 });
