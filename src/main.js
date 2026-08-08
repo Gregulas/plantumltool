@@ -11,6 +11,7 @@ import { highlightPlantUml } from './syntax-highlight.js';
 import { createColorPicker } from './color-picker.js';
 import { readObjectAppearance, updateObjectAppearance } from './object-quick-edit.js';
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
+import { zoomShortcutAction } from './keyboard-shortcuts.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -207,9 +208,9 @@ app.innerHTML = `
         <details class="app-menu">
           <summary>View</summary>
           <div class="menu-popover">
-            <button id="zoomOutBtn" type="button">Zoom out</button>
-            <button id="zoomResetBtn" type="button">Actual size <span class="menu-value">100%</span></button>
-            <button id="zoomInBtn" type="button">Zoom in</button>
+            <button id="zoomOutBtn" type="button"><span>Zoom out</span><kbd>Ctrl/Cmd+-</kbd></button>
+            <button id="zoomResetBtn" type="button"><span>Actual size</span><kbd>Ctrl/Cmd+0</kbd></button>
+            <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>Ctrl/Cmd++</kbd></button>
             <button id="fitBtn" type="button">Fit diagram</button>
             <div class="menu-separator"></div>
             <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span></label>
@@ -1428,7 +1429,13 @@ document.addEventListener('keydown', event => {
   }
   if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
   const key = event.key.toLowerCase();
-  if (key === 'n') {
+  const zoomAction = zoomShortcutAction(event);
+  if (zoomAction) {
+    event.preventDefault();
+    if (zoomAction === 'in') setZoom(state.zoom + 0.1);
+    else if (zoomAction === 'out') setZoom(state.zoom - 0.1);
+    else setZoom(1);
+  } else if (key === 'n') {
     event.preventDefault();
     replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true });
   } else if (key === 'o') {

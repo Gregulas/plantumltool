@@ -54,6 +54,8 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
   - `Ctrl/Cmd + Shift + S`: save to a new file
   - `Ctrl/Cmd + O`: open a source file
   - `Ctrl/Cmd + N`: start a new diagram
+  - `Ctrl/Cmd + +` / `Ctrl/Cmd + -`: zoom the preview in or out
+  - `Ctrl/Cmd + 0`: reset preview zoom to 100%
 
 ## Syntax highlighting, color editing, and folding (v1.5.7)
 
