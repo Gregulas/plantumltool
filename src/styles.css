@@ -494,6 +494,14 @@ button.primary:hover { background: var(--accent-strong); }
   .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(520px, 70vh) minmax(520px, 70vh); }
 }
 
+.workspace.detached-preview-active {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+.workspace.detached-preview-active .workspace-splitter,
+.workspace.detached-preview-active .preview-pane { display: none; }
+
 @media (max-width: 620px) {
   .topbar { align-items: flex-start; }
   .brand p { display: none; }

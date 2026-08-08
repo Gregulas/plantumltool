@@ -16,3 +16,11 @@ export function isDetachedPreviewState(value) {
     && typeof value.filename === 'string'
     && (value.theme === 'light' || value.theme === 'dark');
 }
+
+export function detachedPreviewLifecycle(type, previewId = 'detached-preview') {
+  return { type, previewId: String(previewId || 'detached-preview') };
+}
+
+export function isDetachedPreviewLifecycle(value, type) {
+  return value?.type === type && typeof value.previewId === 'string' && value.previewId.length > 0;
+}
