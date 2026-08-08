@@ -6,6 +6,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 
 - Side-by-side PlantUML source editor and SVG preview with a draggable divider
 - Detachable live preview window that can be moved to a second monitor while the editor stays on the primary display
+- Resizable detached preview with Maximize/Restore button, header double-click, and `Ctrl/Cmd + Shift + M`
 - Click rendered diagram elements to jump directly to their PlantUML source line
 - Adjustable Problems panel height with a draggable horizontal divider
 - Panel sizes are remembered locally between sessions

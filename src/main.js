@@ -403,7 +403,7 @@ function sendDetachedPreviewState(target = detachedPreviewWindow) {
 function openDetachedPreview() {
   closeMenus();
   const url = new URL('preview.html', document.baseURI);
-  detachedPreviewWindow = window.open(url, 'plantuml-studio-detached-preview', 'popup=yes,width=1100,height=760,resizable=yes,scrollbars=yes');
+  detachedPreviewWindow = window.open(url, 'plantuml-studio-detached-preview', 'width=1100,height=760,resizable=yes,scrollbars=yes');
   if (!detachedPreviewWindow) {
     showError('The preview window was blocked. Allow pop-ups for this local PlantUML Studio page and try again.');
     return;
