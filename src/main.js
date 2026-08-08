@@ -168,50 +168,67 @@ app.innerHTML = `
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">PU</div>
-        <div>
-          <h1>PlantUML Local Studio</h1>
-          <p>Local JavaScript renderer • no server</p>
-        </div>
+        <h1>PlantUML Studio</h1>
       </div>
-      <div class="top-actions">
-        <label class="toggle" title="Show PlantUML suggestions while typing">
-          <input id="autocompleteToggle" type="checkbox" />
-          <span>Autocomplete</span>
-        </label>
-        <label class="toggle" title="Render automatically while typing">
-          <input id="liveToggle" type="checkbox" />
-          <span>Live render</span>
-        </label>
-        <button id="themeBtn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+      <nav class="menu-bar" aria-label="Application menu">
+        <details class="app-menu">
+          <summary>File</summary>
+          <div class="menu-popover">
+            <button id="newBtn" type="button"><span>New</span><kbd>Ctrl/Cmd+N</kbd></button>
+            <button id="openBtn" type="button"><span>Open…</span><kbd>Ctrl/Cmd+O</kbd></button>
+            <div class="menu-separator"></div>
+            <button id="saveBtn" type="button"><span>Save</span><kbd>Ctrl/Cmd+S</kbd></button>
+            <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>Ctrl/Cmd+Shift+S</kbd></button>
+            <div class="menu-separator"></div>
+            <button id="copySvgBtn" type="button">Copy SVG</button>
+            <button id="exportSvgBtn" type="button">Export SVG…</button>
+            <button id="exportPngBtn" type="button">Export PNG…</button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Edit</summary>
+          <div class="menu-popover">
+            <button id="undoMenuBtn" type="button"><span>Undo</span><kbd>Ctrl/Cmd+Z</kbd></button>
+            <button id="redoMenuBtn" type="button"><span>Redo</span><kbd>Ctrl/Cmd+Y</kbd></button>
+            <div class="menu-separator"></div>
+            <button id="formatBtn" type="button"><span>Format script</span><kbd>Ctrl/Cmd+Shift+F</kbd></button>
+            <button id="foldAllBtn" type="button">Fold all blocks</button>
+            <button id="unfoldAllBtn" type="button">Unfold all blocks</button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Diagram</summary>
+          <div class="menu-popover">
+            <button id="renderMenuBtn" type="button"><span>Render</span><kbd>Ctrl/Cmd+Enter</kbd></button>
+            <div class="menu-separator"></div>
+            ${Object.keys(TEMPLATES).map(key => `<button type="button" data-template="${key}">New ${key === 'state' ? 'state machine' : key} diagram</button>`).join('')}
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>View</summary>
+          <div class="menu-popover">
+            <button id="zoomOutBtn" type="button">Zoom out</button>
+            <button id="zoomResetBtn" type="button">Actual size <span class="menu-value">100%</span></button>
+            <button id="zoomInBtn" type="button">Zoom in</button>
+            <button id="fitBtn" type="button">Fit diagram</button>
+            <div class="menu-separator"></div>
+            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span></label>
+            <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span></label>
+            <button id="themeBtn" type="button"><span>Toggle dark theme</span><span aria-hidden="true">◐</span></button>
+          </div>
+        </details>
+      </nav>
+      <div class="top-actions" aria-label="Quick actions">
+        <button id="undoBtn" class="icon-btn" type="button" title="Undo" aria-label="Undo">↶</button>
+        <button id="redoBtn" class="icon-btn" type="button" title="Redo" aria-label="Redo">↷</button>
+        <button id="quickSaveBtn" class="compact-save" type="button" title="Save">Save</button>
+        <button id="renderBtn" class="primary compact-action" type="button">Render</button>
       </div>
+      <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
 
     <main class="workspace">
       <section class="pane editor-pane">
-        <div class="pane-toolbar">
-          <div class="toolbar-group">
-            <button id="newBtn">New</button>
-            <button id="openBtn">Open</button>
-            <button id="saveBtn">Save .puml</button>
-            <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
-          </div>
-          <div class="toolbar-group">
-            <select id="templateSelect" title="Insert a sample PlantUML diagram">
-              <option value="">Templates…</option>
-              <option value="sequence">Sequence</option>
-              <option value="class">Class</option>
-              <option value="component">Component</option>
-              <option value="activity">Activity</option>
-              <option value="state">State machine</option>
-              <option value="deployment">Deployment</option>
-            </select>
-            <button id="formatBtn" title="Format script (Ctrl/Cmd + Shift + F)">Format</button>
-            <button id="foldAllBtn" title="Collapse all detected blocks">Fold all</button>
-            <button id="unfoldAllBtn" title="Expand all collapsed blocks">Unfold all</button>
-            <button id="renderBtn" class="primary">Render</button>
-          </div>
-        </div>
-
         <div class="editor-wrap">
           <div id="lineNumbers" class="line-numbers" aria-hidden="true"></div>
           <pre id="highlightLayer" class="syntax-layer" aria-hidden="true"><code id="highlightCode"></code></pre>
@@ -239,20 +256,6 @@ app.innerHTML = `
       </div>
 
       <section class="pane preview-pane">
-        <div class="pane-toolbar">
-          <div class="toolbar-group">
-            <button id="zoomOutBtn" title="Zoom out">−</button>
-            <button id="zoomResetBtn" title="Reset zoom">100%</button>
-            <button id="zoomInBtn" title="Zoom in">+</button>
-            <button id="fitBtn" title="Fit diagram to preview">Fit</button>
-          </div>
-          <div class="toolbar-group">
-            <button id="copySvgBtn">Copy SVG</button>
-            <button id="exportSvgBtn">Export SVG</button>
-            <button id="exportPngBtn">Export PNG</button>
-          </div>
-        </div>
-
         <div id="previewViewport" class="preview-viewport">
           <div id="previewCanvas" class="preview-canvas">
             <div class="empty-state">
@@ -303,7 +306,6 @@ const els = {
   fileInput: document.querySelector('#fileInput'),
   liveToggle: document.querySelector('#liveToggle'),
   autocompleteToggle: document.querySelector('#autocompleteToggle'),
-  templateSelect: document.querySelector('#templateSelect'),
   formatBtn: document.querySelector('#formatBtn'),
   foldAllBtn: document.querySelector('#foldAllBtn'),
   unfoldAllBtn: document.querySelector('#unfoldAllBtn'),
@@ -1046,6 +1048,14 @@ async function writeSourceToHandle(handle) {
 async function saveSource() {
   try {
     if (state.fileHandle) return await writeSourceToHandle(state.fileHandle);
+    return await saveSourceAs();
+  } catch (error) {
+    if (error?.name !== 'AbortError') showError(`Save failed. ${error?.message || error}`);
+  }
+}
+
+async function saveSourceAs() {
+  try {
     if ('showSaveFilePicker' in window) {
       const handle = await window.showSaveFilePicker({
         suggestedName: state.filename || 'diagram.puml',
@@ -1059,7 +1069,7 @@ async function saveSource() {
     updateFileStatus();
     els.renderStatus.textContent = 'Downloaded source (browser cannot overwrite files directly)';
   } catch (error) {
-    if (error?.name !== 'AbortError') showError(`Save failed. ${error?.message || error}`);
+    if (error?.name !== 'AbortError') showError(`Save As failed. ${error?.message || error}`);
   }
 }
 
@@ -1262,7 +1272,10 @@ els.editor.addEventListener('keydown', event => {
     scheduleRender();
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && event.shiftKey) {
+    event.preventDefault();
+    saveSourceAs();
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault();
     saveSource();
   }
@@ -1294,9 +1307,12 @@ els.unfoldAllBtn.addEventListener('click', () => {
 document.querySelector('#newBtn').addEventListener('click', () => replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
 document.querySelector('#openBtn').addEventListener('click', openSourceFile);
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
+document.querySelector('#saveAsBtn').addEventListener('click', saveSourceAs);
+document.querySelector('#quickSaveBtn').addEventListener('click', () => saveSource());
 document.querySelector('#exportSvgBtn').addEventListener('click', exportSvg);
 document.querySelector('#exportPngBtn').addEventListener('click', exportPng);
 document.querySelector('#copySvgBtn').addEventListener('click', copySvg);
+document.querySelector('#renderMenuBtn').addEventListener('click', doRender);
 document.querySelector('#zoomOutBtn').addEventListener('click', () => setZoom(state.zoom - 0.1));
 document.querySelector('#zoomInBtn').addEventListener('click', () => setZoom(state.zoom + 0.1));
 document.querySelector('#zoomResetBtn').addEventListener('click', () => setZoom(1));
@@ -1382,10 +1398,46 @@ els.liveToggle.addEventListener('change', () => {
   if (state.live) doRender();
 });
 
-els.templateSelect.addEventListener('change', () => {
-  const key = els.templateSelect.value;
-  if (key && TEMPLATES[key]) replaceSource(TEMPLATES[key], `${key}.puml`, { isNew: true });
-  els.templateSelect.value = '';
+document.querySelectorAll('[data-template]').forEach(button => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.template;
+    if (key && TEMPLATES[key]) replaceSource(TEMPLATES[key], `${key}.puml`, { isNew: true });
+  });
+});
+
+const appMenus = [...document.querySelectorAll('.app-menu')];
+function closeMenus(except = null) {
+  appMenus.forEach(menu => { if (menu !== except) menu.open = false; });
+}
+
+appMenus.forEach(menu => {
+  menu.addEventListener('toggle', () => { if (menu.open) closeMenus(menu); });
+  menu.querySelector('.menu-popover').addEventListener('click', event => {
+    if (event.target.closest('button')) menu.open = false;
+  });
+});
+
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.app-menu')) closeMenus();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    closeMenus();
+    return;
+  }
+  if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+  const key = event.key.toLowerCase();
+  if (key === 'n') {
+    event.preventDefault();
+    replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true });
+  } else if (key === 'o') {
+    event.preventDefault();
+    openSourceFile();
+  } else if (key === 's' && event.shiftKey) {
+    event.preventDefault();
+    saveSourceAs();
+  }
 });
 
 els.fileInput.addEventListener('change', async () => {

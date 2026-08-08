@@ -31,6 +31,8 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Zoom, fit-to-view, and Ctrl/Cmd + mouse-wheel zoom
 - Light/dark UI and PlantUML render mode
 - Built-in templates for sequence, class, component, activity, state, and deployment diagrams
+- Compact top menu with every editor, diagram, file, export, view, and preference action
+- Direct Save and Save As workflows, plus compact Save, Undo, Redo, and Render quick actions
 - Local autosave in browser storage
 - Caret/selection and editor scroll position are preserved while live diagnostics/rendering update in the background
 - `Enter` keeps the current line indentation instead of resetting the caret to column 1
@@ -49,6 +51,9 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
   - `Ctrl/Cmd + Shift + F`: format the complete PlantUML script
   - `Ctrl/Cmd + Enter`: render
   - `Ctrl/Cmd + S`: save `.puml`
+  - `Ctrl/Cmd + Shift + S`: save to a new file
+  - `Ctrl/Cmd + O`: open a source file
+  - `Ctrl/Cmd + N`: start a new diagram
 
 ## Syntax highlighting, color editing, and folding (v1.5.7)
 
