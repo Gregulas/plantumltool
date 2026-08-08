@@ -367,16 +367,14 @@ button.primary:hover { background: var(--accent-strong); }
 .preview-canvas {
   min-width: 100%;
   min-height: 100%;
-  width: max-content;
-  height: max-content;
+  width: 100%;
+  height: 100%;
   padding: 32px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  display: block;
 }
 .preview-canvas svg {
   display: block;
-  flex: none;
+  margin-inline: auto;
   filter: drop-shadow(0 8px 18px rgba(0,0,0,0.07));
 }
 

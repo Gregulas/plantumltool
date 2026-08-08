@@ -12,6 +12,7 @@ import { createColorPicker } from './color-picker.js';
 import { readObjectAppearance, updateObjectAppearance } from './object-quick-edit.js';
 import { buildFoldProjection, containingCollapsedRegion, matchingBlockBoundary, sourceLineToViewLine, sourceOffsetToViewOffset, viewOffsetToSourceOffset } from './folding.js';
 import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
+import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -209,7 +210,7 @@ app.innerHTML = `
           <summary>View</summary>
           <div class="menu-popover">
             <button id="zoomOutBtn" type="button"><span>Zoom out</span><kbd>Ctrl/Cmd+-</kbd></button>
-            <button id="zoomResetBtn" type="button"><span>Actual size</span><kbd>Ctrl/Cmd+0</kbd></button>
+            <button id="zoomResetBtn" type="button"><span>Actual size <span id="zoomValue" class="menu-value">100%</span></span><kbd>Ctrl/Cmd+0</kbd></button>
             <button id="zoomInBtn" type="button"><span>Zoom in</span><kbd>Ctrl/Cmd++</kbd></button>
             <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>Ctrl/Cmd+Alt+0</kbd></button>
             <div class="menu-separator"></div>
@@ -329,6 +330,7 @@ const els = {
   renderStatus: document.querySelector('#renderStatus'),
   navigationStatus: document.querySelector('#navigationStatus'),
   zoomResetBtn: document.querySelector('#zoomResetBtn'),
+  zoomValue: document.querySelector('#zoomValue'),
   problemsPanel: document.querySelector('#problemsPanel'),
   problemsToggle: document.querySelector('#problemsToggle'),
   problemsList: document.querySelector('#problemsList'),
@@ -774,9 +776,29 @@ function navigateFromDiagram(event) {
 function applyZoom() {
   const svg = els.previewCanvas.querySelector('svg');
   if (svg) {
-    svg.style.width = `${state.zoom * 100}%`;
+    const dimensions = zoomedSvgDimensions(svg.viewBox?.baseVal, state.zoom);
+    if (dimensions) {
+      svg.style.width = `${dimensions.width}px`;
+      svg.style.height = `${dimensions.height}px`;
+      const style = getComputedStyle(els.previewCanvas);
+      const canvas = scrollCanvasDimensions(
+        dimensions,
+        { width: els.previewViewport.clientWidth, height: els.previewViewport.clientHeight },
+        {
+          left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight),
+          top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom)
+        }
+      );
+      els.previewCanvas.style.width = `${canvas.width}px`;
+      els.previewCanvas.style.height = `${canvas.height}px`;
+    } else {
+      svg.style.width = `${state.zoom * 100}%`;
+      svg.style.height = 'auto';
+      els.previewCanvas.style.width = '';
+      els.previewCanvas.style.height = '';
+    }
   }
-  els.zoomResetBtn.textContent = `${Math.round(state.zoom * 100)}%`;
+  els.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
 }
 
 function setZoom(next) {
@@ -1586,7 +1608,7 @@ els.previewViewport.addEventListener('wheel', event => {
 
 window.addEventListener('resize', () => {
   applyProblemsHeight(state.problemsHeight);
-  if (state.zoom < 1) applyZoom();
+  applyZoom();
 });
 
 window.addEventListener('beforeunload', event => {

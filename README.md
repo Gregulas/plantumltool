@@ -29,6 +29,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Export SVG and PNG
 - Copy rendered SVG to the clipboard
 - Zoom, fit-to-view, and Ctrl/Cmd + mouse-wheel zoom
+- Fully scrollable zoomed previews in both horizontal and vertical directions
 - Light/dark UI and PlantUML render mode
 - Built-in templates for sequence, class, component, activity, state, and deployment diagrams
 - Compact top menu with every editor, diagram, file, export, view, and preference action
