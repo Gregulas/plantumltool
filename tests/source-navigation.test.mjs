@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSourceNavigationIndex,
+  findTextNavigationTarget,
   plantUmlSvgLineToSourceLine,
   relocateNavigationTarget,
   resolveNavigationTarget
@@ -55,6 +56,29 @@ Portal <<-- API: Callback notification
     texts: ['Accepted response']
   });
   assert.equal(target?.line, 5);
+});
+
+test('maps inline and multiline note text to its exact source line', () => {
+  const source = `@startuml
+participant Portal
+note right of Portal
+First explanatory comment
+Portal -> API: example text inside the note
+Final explanatory comment
+end note
+note over Portal: Inline explanatory comment
+@enduml`;
+  const index = buildSourceNavigationIndex(source);
+  const notes = index.records.filter(record => record.type === 'note');
+  assert.deepEqual(notes.map(record => ({ line: record.line, label: record.label })), [
+    { line: 4, label: 'First explanatory comment' },
+    { line: 5, label: 'Portal -> API: example text inside the note' },
+    { line: 6, label: 'Final explanatory comment' },
+    { line: 8, label: 'Inline explanatory comment' }
+  ]);
+  assert.equal(index.records.some(record => record.type === 'relationship' && record.line === 5), false);
+  assert.equal(findTextNavigationTarget(source, ['Final explanatory comment'])?.line, 6);
+  assert.equal(findTextNavigationTarget(source, ['Inline explanatory comment'])?.line, 8);
 });
 
 test('maps class members to their member source lines', () => {

@@ -182,12 +182,37 @@ export function buildSourceNavigationIndex(source) {
   const declarations = new Map();
   let sequence = 0;
   let activeContainer = null;
+  let activeNote = false;
 
   lines.forEach((raw, index) => {
     const line = index + 1;
     const code = withoutComment(raw);
     const trimmed = code.trim();
+
+    if (activeNote) {
+      const noteText = raw.trim();
+      if (/^(?:end\s+note|endnote)\b/i.test(noteText)) {
+        activeNote = false;
+        return;
+      }
+      if (noteText) {
+        records.push(makeRecord({
+          type: 'note',
+          kind: 'note',
+          label: noteText,
+          line,
+          statement: raw
+        }, ++sequence));
+      }
+      return;
+    }
+
     if (!trimmed) return;
+
+    if (/^(?:note|hnote|rnote)\b/i.test(trimmed) && !/:\s*\S/.test(trimmed)) {
+      activeNote = true;
+      return;
+    }
 
     const declaration = parseDeclaration(trimmed);
     if (declaration) {
@@ -256,7 +281,7 @@ export function buildSourceNavigationIndex(source) {
       return;
     }
 
-    const note = trimmed.match(/^note\b.*?:\s*(.+)$/i);
+    const note = trimmed.match(/^(?:note|hnote|rnote)\b.*?:\s*(.+)$/i);
     if (note) {
       records.push(makeRecord({
         type: 'note',
