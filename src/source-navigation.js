@@ -71,6 +71,7 @@ function parseDeclaration(trimmed) {
 
   const kind = match[1].toLowerCase();
   let rest = stripStereotypes(match[2] || '');
+  if (kind === 'archimate') rest = rest.replace(/^#[A-Za-z][\w-]*\s+/, '').trim();
   if (!rest || rest.startsWith('{')) return null;
   rest = rest.replace(/\s+#(?:[A-Za-z]+|[0-9A-Fa-f]{3,8})\b.*$/, '').trim();
   rest = rest.replace(/\s+order\s+\d+\b.*$/i, '').trim();
@@ -106,6 +107,8 @@ function referenceTokenAtEnd(text) {
   if (multiplicity) value = multiplicity[1].trim();
   const quoted = value.match(/"([^"]+)"\s*$/);
   if (quoted) return quoted[1];
+  const special = value.match(/\[\*\]\s*$/);
+  if (special) return '[*]';
   const bracketed = value.match(/\[([^\]]+)\]\s*$/);
   if (bracketed) return bracketed[1];
   const plain = value.match(/([A-Za-z_$][\w$.-]*|\[\*\])\s*$/);
@@ -117,10 +120,10 @@ function referenceTokenAtStart(text) {
   value = value.replace(/^"(?:\d+|[\d.*]+|\d+\.\.\*|\*|\d+\.\.\d+)"\s*/, '').trim();
   const quoted = value.match(/^"([^"]+)"/);
   if (quoted) return quoted[1];
-  const bracketed = value.match(/^\[([^\]]+)\]/);
-  if (bracketed) return bracketed[1];
   const special = value.match(/^\[\*\]/);
   if (special) return '[*]';
+  const bracketed = value.match(/^\[([^\]]+)\]/);
+  if (bracketed) return bracketed[1];
   const plain = value.match(/^([A-Za-z_$][\w$.-]*)/);
   return plain ? plain[1] : '';
 }
