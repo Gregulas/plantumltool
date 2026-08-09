@@ -49,6 +49,30 @@ let quickEditRecordId = null;
 let quickEditTimer = null;
 let quickEditPoint = null;
 
+function clearSelectionOverlay() {
+  els.canvas.querySelector('.detached-selection-screen-overlay')?.remove();
+  document.querySelector('#detachedSelectionActions').hidden = true;
+}
+
+function refreshSelectionOverlay() {
+  clearSelectionOverlay();
+  const svgOverlay = els.canvas.querySelector('svg .source-selection-overlay');
+  if (!svgOverlay) return;
+  const bounds = svgOverlay.getBoundingClientRect();
+  const canvasBounds = els.canvas.getBoundingClientRect();
+  if (bounds.width < 1 || bounds.height < 1) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'detached-selection-screen-overlay';
+  overlay.style.left = `${bounds.left - canvasBounds.left}px`;
+  overlay.style.top = `${bounds.top - canvasBounds.top}px`;
+  overlay.style.width = `${bounds.width}px`;
+  overlay.style.height = `${bounds.height}px`;
+  overlay.addEventListener('pointerenter', () => {
+    document.querySelector('#detachedSelectionActions').hidden = false;
+  });
+  els.canvas.appendChild(overlay);
+}
+
 function sendAction(type, payload = {}) {
   const message = detachedPreviewAction(type, previewId, payload);
   channel?.postMessage(message);
@@ -84,6 +108,7 @@ function applyZoom() {
   els.canvas.style.width = `${canvas.width}px`;
   els.canvas.style.height = `${canvas.height}px`;
   els.zoomReset.textContent = `${Math.round(zoom * 100)}%`;
+  requestAnimationFrame(refreshSelectionOverlay);
 }
 
 function setZoom(next) {
@@ -106,11 +131,14 @@ function receive(message) {
   els.status.textContent = message.status || 'Synchronized with editor';
   document.title = `${message.filename} • Detached Preview`;
   if (message.svg) {
+    clearSelectionOverlay();
     els.canvas.innerHTML = message.svg;
     const svg = els.canvas.querySelector('svg');
     svg?.removeAttribute('width');
     svg?.removeAttribute('height');
     applyZoom();
+  } else {
+    clearSelectionOverlay();
   }
 }
 
@@ -184,7 +212,7 @@ els.canvas.addEventListener('click', event => {
   els.status.textContent = 'Opened source location in the editor window';
 });
 els.canvas.addEventListener('pointerover', event => {
-  if (event.target instanceof Element && event.target.closest('.source-selection-overlay')) {
+  if (event.target instanceof Element && event.target.closest('.detached-selection-screen-overlay')) {
     document.querySelector('#detachedSelectionActions').hidden = false;
     return;
   }

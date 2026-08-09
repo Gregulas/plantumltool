@@ -16,11 +16,12 @@ button:hover { border-color:var(--accent); }
 #windowSize { display:flex; align-items:center; gap:5px; }
 @media (max-width:680px) { #windowSize span,.detached-brand small { display:none; } header { padding-inline:7px; } .detached-actions { gap:3px; } }
 #detachedViewport { min-height:0; overflow:auto; background-color:var(--surface); background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px); background-size:24px 24px; }
-#detachedCanvas { min-width:100%; min-height:100%; width:100%; height:100%; padding:32px; }
+#detachedCanvas { position:relative; min-width:100%; min-height:100%; width:100%; height:100%; padding:32px; }
 #detachedCanvas svg { display:block; margin-inline:auto; filter:drop-shadow(0 8px 18px rgba(0,0,0,.08)); }
 #detachedCanvas .source-navigable { cursor:pointer; }
 #detachedCanvas .source-navigable:hover { filter:brightness(1.08); }
-#detachedCanvas .source-selection-overlay { opacity:1; pointer-events:all; fill:color-mix(in srgb,var(--accent) 16%,transparent); stroke:var(--accent); stroke-width:1.5; vector-effect:non-scaling-stroke; cursor:context-menu; }
+#detachedCanvas .source-selection-overlay { opacity:0; pointer-events:none; }
+.detached-selection-screen-overlay { position:absolute; z-index:14; border:2px solid color-mix(in srgb,var(--accent) 78%,white); border-radius:7px; background:color-mix(in srgb,var(--accent) 16%,transparent); box-shadow:0 0 0 1px color-mix(in srgb,var(--surface) 60%,transparent); cursor:context-menu; }
 .detached-selection-actions { position:fixed; z-index:22; right:18px; top:72px; min-width:190px; padding:10px; display:grid; gap:8px; color:var(--text); background:var(--surface); border:1px solid var(--accent); border-radius:10px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
 .detached-selection-actions[hidden] { display:none; }
 .detached-selection-actions strong { font-size:12px; }
