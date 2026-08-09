@@ -27,6 +27,7 @@ document.querySelector('#previewApp').innerHTML = `
       <label>Style / stereotype <input id="detachedQuickEditStyle" type="text" placeholder="service" /></label>
       <div class="detached-quick-edit-actions"><button id="detachedQuickEditReset" type="button">Clear</button><button type="submit">Apply</button></div>
     </form>
+    <div id="detachedSelectionActions" class="detached-selection-actions" hidden><strong>Selected script</strong><button id="detachedSelectionOpenTab" type="button">Open in new tab</button></div>
     <footer><span id="detachedStatus">Connecting…</span><span>PlantUML Studio ${APP_VERSION}</span></footer>
   </div>
 `;
@@ -183,6 +184,10 @@ els.canvas.addEventListener('click', event => {
   els.status.textContent = 'Opened source location in the editor window';
 });
 els.canvas.addEventListener('pointerover', event => {
+  if (event.target instanceof Element && event.target.closest('.source-selection-overlay')) {
+    document.querySelector('#detachedSelectionActions').hidden = false;
+    return;
+  }
   const marked = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
   if (!marked) return;
   clearTimeout(quickEditTimer);
@@ -204,6 +209,11 @@ els.quickEdit.addEventListener('submit', event => {
 });
 document.querySelector('#detachedQuickEditClose').addEventListener('click', closeQuickEdit);
 document.querySelector('#detachedQuickEditReset').addEventListener('click', () => { els.quickEditColor.value = ''; els.quickEditStyle.value = ''; });
+document.querySelector('#detachedSelectionOpenTab').addEventListener('click', () => {
+  sendAction('detached-preview-open-selection-tab');
+  document.querySelector('#detachedSelectionActions').hidden = true;
+  els.status.textContent = 'Opened selection in a new editor tab';
+});
 els.windowSize.addEventListener('click', toggleMaximize);
 document.querySelector('header').addEventListener('dblclick', event => {
   if (!event.target.closest('button')) toggleMaximize();

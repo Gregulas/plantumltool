@@ -20,6 +20,11 @@ button:hover { border-color:var(--accent); }
 #detachedCanvas svg { display:block; margin-inline:auto; filter:drop-shadow(0 8px 18px rgba(0,0,0,.08)); }
 #detachedCanvas .source-navigable { cursor:pointer; }
 #detachedCanvas .source-navigable:hover { filter:brightness(1.08); }
+#detachedCanvas .source-selection-overlay { fill:color-mix(in srgb,var(--accent) 16%,transparent); stroke:var(--accent); stroke-width:1.5; vector-effect:non-scaling-stroke; cursor:context-menu; }
+.detached-selection-actions { position:fixed; z-index:22; right:18px; top:72px; min-width:190px; padding:10px; display:grid; gap:8px; color:var(--text); background:var(--surface); border:1px solid var(--accent); border-radius:10px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
+.detached-selection-actions[hidden] { display:none; }
+.detached-selection-actions strong { font-size:12px; }
+.detached-selection-actions button { color:white; background:var(--accent); border-color:var(--accent); }
 .detached-quick-edit { position:fixed; z-index:20; width:280px; padding:10px; display:grid; gap:9px; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
 .detached-quick-edit[hidden] { display:none; }
 .detached-quick-edit > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:8px; }

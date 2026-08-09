@@ -16,6 +16,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
+import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 
@@ -170,6 +171,9 @@ const state = {
   foldedStarts: new Set(),
   foldProjection: null
 };
+const documentTabs = [createDocumentTab(state.source, 'diagram.puml', { isNew: true })];
+let activeTabId = documentTabs[0].id;
+let openFileInNewTab = false;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -187,6 +191,7 @@ app.innerHTML = `
           <div class="menu-popover">
             <button id="newBtn" type="button"><span>New</span><kbd>${shortcutLabel('Ctrl/Cmd+N')}</kbd></button>
             <button id="openBtn" type="button"><span>Open…</span><kbd>${shortcutLabel('Ctrl/Cmd+O')}</kbd></button>
+            <button id="openInNewTabBtn" type="button"><span>Open in new tab…</span></button>
             <div class="menu-separator"></div>
             <button id="saveBtn" type="button"><span>Save</span><kbd>${shortcutLabel('Ctrl/Cmd+S')}</kbd></button>
             <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+S')}</kbd></button>
@@ -246,6 +251,7 @@ app.innerHTML = `
       </div>
       <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
+    <div id="documentTabs" class="document-tabs" role="tablist" aria-label="Open diagrams"></div>
 
     <dialog id="shortcutsDialog" class="shortcuts-dialog" aria-labelledby="shortcutsTitle">
       <div class="shortcuts-heading">
@@ -315,6 +321,7 @@ app.innerHTML = `
               <p>Loading local PlantUML engine…</p>
             </div>
           </div>
+          <div id="selectionActions" class="selection-actions" hidden><strong>Selected script</strong><button id="selectionOpenTabBtn" type="button">Open in new tab</button></div>
         </div>
 
         <form id="objectQuickEdit" class="object-quick-edit" hidden>
@@ -388,6 +395,9 @@ const els = {
   quickEditStyle: document.querySelector('#quickEditStyle'),
   quickEditClose: document.querySelector('#quickEditClose'),
   quickEditReset: document.querySelector('#quickEditReset')
+  ,documentTabs: document.querySelector('#documentTabs')
+  ,selectionActions: document.querySelector('#selectionActions')
+  ,selectionOpenTabBtn: document.querySelector('#selectionOpenTabBtn')
 };
 
 let detachedPreviewWindow = null;
@@ -479,6 +489,10 @@ function handleDetachedPreviewAction(message, target = null) {
     if (record) navigateToDiagramRecord(record);
     return;
   }
+  if (isDetachedPreviewAction(message, 'detached-preview-open-selection-tab')) {
+    openSelectionInNewTab();
+    return;
+  }
   if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-request')) {
     const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
     if (!record || record.type !== 'element') return;
@@ -563,6 +577,90 @@ function hasCollapsedFolds() {
 
 function canonicalSource() {
   return hasCollapsedFolds() ? state.source : els.editor.value;
+}
+
+function activeDocumentTab() {
+  return documentTabs.find(tab => tab.id === activeTabId) || documentTabs[0];
+}
+
+function syncActiveDocument() {
+  const tab = activeDocumentTab();
+  if (!tab || !els?.editor) return;
+  tab.source = canonicalSource();
+  for (const key of ['svg', 'filename', 'fileHandle', 'savedSource', 'isNewFile', 'lastSuccessfulSource', 'sourceNavigationIndex', 'svgSourceLineOffset', 'localDiagnostics', 'rendererDiagnostics', 'ignoredSpellingOccurrences', 'ignoredSpellingWords', 'foldedStarts', 'foldProjection']) tab[key] = state[key];
+  const selection = sourceSelectionFromView();
+  tab.selectionStart = selection.start;
+  tab.selectionEnd = selection.end;
+  tab.scrollTop = els.editor.scrollTop;
+  tab.scrollLeft = els.editor.scrollLeft;
+}
+
+function renderDocumentTabs() {
+  if (!els?.documentTabs) return;
+  els.documentTabs.innerHTML = documentTabs.map(tab => `
+    <button class="document-tab${tab.id === activeTabId ? ' active' : ''}" type="button" role="tab" aria-selected="${tab.id === activeTabId}" data-tab-id="${tab.id}">
+      <span class="tab-dirty">${isDocumentDirty(tab) ? '●' : ''}</span><span>${escapeHtml(tab.filename)}</span>
+      ${documentTabs.length > 1 ? `<span class="tab-close" role="button" aria-label="Close ${escapeHtml(tab.filename)}" data-close-tab="${tab.id}">×</span>` : ''}
+    </button>`).join('');
+}
+
+function activateDocumentTab(id, { render = true } = {}) {
+  if (id === activeTabId) return;
+  syncActiveDocument();
+  const tab = documentTabs.find(item => item.id === id);
+  if (!tab) return;
+  state.renderSeq += 1;
+  activeTabId = tab.id;
+  for (const key of ['svg', 'filename', 'fileHandle', 'savedSource', 'isNewFile', 'lastSuccessfulSource', 'sourceNavigationIndex', 'svgSourceLineOffset', 'localDiagnostics', 'rendererDiagnostics', 'ignoredSpellingOccurrences', 'ignoredSpellingWords', 'foldedStarts', 'foldProjection']) state[key] = tab[key];
+  state.source = tab.source;
+  state.foldProjection = buildFoldProjection(tab.source, state.foldedStarts);
+  els.editor.value = state.foldProjection.text;
+  const start = sourceOffsetToViewOffset(state.source, state.foldProjection, tab.selectionStart);
+  const end = sourceOffsetToViewOffset(state.source, state.foldProjection, tab.selectionEnd);
+  els.editor.setSelectionRange(start, end);
+  els.editor.scrollTop = tab.scrollTop;
+  els.editor.scrollLeft = tab.scrollLeft;
+  editHistory.reset();
+  if (tab.svg) {
+    els.previewCanvas.innerHTML = tab.svg;
+    prepareSvg();
+    els.renderStatus.textContent = 'Active tab rendering restored';
+  } else {
+    els.previewCanvas.innerHTML = '<div class="empty-state"><p>Rendering active tab…</p></div>';
+  }
+  updateEditorMeta();
+  renderDiagnostics();
+  renderDocumentTabs();
+  sendDetachedPreviewState();
+  if (render) doRender();
+}
+
+function addDocumentTab(source, filename, options = {}) {
+  syncActiveDocument();
+  const tab = createDocumentTab(source, filename, options);
+  documentTabs.push(tab);
+  const previous = activeTabId;
+  activeTabId = previous;
+  activateDocumentTab(tab.id);
+  if (options.selectionStart != null) {
+    tab.selectionStart = options.selectionStart;
+    tab.selectionEnd = options.selectionEnd;
+    els.editor.setSelectionRange(tab.selectionStart, tab.selectionEnd);
+    syncActiveDocument();
+  }
+  return tab;
+}
+
+function closeDocumentTab(id) {
+  if (documentTabs.length === 1) return;
+  const index = documentTabs.findIndex(tab => tab.id === id);
+  if (index < 0) return;
+  const wasActive = id === activeTabId;
+  documentTabs.splice(index, 1);
+  if (wasActive) {
+    activeTabId = '';
+    activateDocumentTab(documentTabs[Math.max(0, index - 1)].id);
+  } else renderDocumentTabs();
 }
 
 function sourceSelectionFromView() {
@@ -730,6 +828,7 @@ async function doRender() {
   }
 
   const seq = ++state.renderSeq;
+  const renderTabId = activeTabId;
   state.rendering = true;
   els.renderStatus.textContent = state.svg ? 'Validating changes…' : 'Rendering…';
   document.querySelector('#renderBtn').disabled = true;
@@ -738,7 +837,7 @@ async function doRender() {
     // Render into memory first. The preview is only replaced after the result
     // is confirmed not to be PlantUML's syntax-error SVG.
     const candidateSvg = await renderPlantUml(source, { dark: state.dark });
-    if (seq !== state.renderSeq) return false;
+    if (seq !== state.renderSeq || renderTabId !== activeTabId) return false;
 
     const svgError = extractSvgRenderError(candidateSvg);
     if (svgError) {
@@ -765,6 +864,8 @@ async function doRender() {
     hideError();
     els.renderStatus.textContent = 'Rendered locally';
     renderDiagnostics();
+    syncActiveDocument();
+    renderDocumentTabs();
     sendDetachedPreviewState();
     return true;
   } catch (error) {
@@ -795,6 +896,74 @@ function prepareSvg() {
   svg.style.height = 'auto';
   decorateSvgNavigation(svg);
   applyZoom();
+  requestAnimationFrame(refreshSelectionViewer);
+}
+
+function clearSelectionViewer() {
+  els.previewCanvas.querySelectorAll('.source-selection-overlay').forEach(node => node.remove());
+  els.selectionActions.hidden = true;
+}
+
+function selectedSourceLineRange() {
+  const selection = sourceSelectionFromView();
+  if (selection.start === selection.end) return null;
+  const before = state.source.slice(0, selection.start).replace(/\r\n?/g, '\n');
+  const selected = state.source.slice(selection.start, selection.end).replace(/\r\n?/g, '\n');
+  const startLine = before.split('\n').length;
+  return { ...selection, startLine, endLine: startLine + selected.split('\n').length - 1 };
+}
+
+function refreshSelectionViewer() {
+  clearSelectionViewer();
+  const range = selectedSourceLineRange();
+  const index = state.sourceNavigationIndex;
+  const svg = els.previewCanvas.querySelector('svg');
+  if (!range || !index || !svg) return;
+  const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  layer.classList.add('source-selection-overlays');
+  const seen = new Set();
+  for (const node of els.previewCanvas.querySelectorAll('[data-source-nav-id]')) {
+    const record = index.byId.get(node.dataset.sourceNavId);
+    if (!record || record.line < range.startLine || record.line > range.endLine) continue;
+    let box;
+    try { box = node.getBBox(); } catch { continue; }
+    if (box.width < 2 || box.height < 2) continue;
+    const matrix = node.getCTM();
+    const points = [
+      new DOMPoint(box.x, box.y), new DOMPoint(box.x + box.width, box.y),
+      new DOMPoint(box.x, box.y + box.height), new DOMPoint(box.x + box.width, box.y + box.height)
+    ].map(point => matrix ? point.matrixTransform(matrix) : point);
+    const left = Math.min(...points.map(point => point.x));
+    const top = Math.min(...points.map(point => point.y));
+    const right = Math.max(...points.map(point => point.x));
+    const bottom = Math.max(...points.map(point => point.y));
+    const key = [Math.round(left), Math.round(top), Math.round(right), Math.round(bottom)].join(':');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    overlay.classList.add('source-selection-overlay');
+    overlay.setAttribute('x', String(left - 4));
+    overlay.setAttribute('y', String(top - 3));
+    overlay.setAttribute('width', String(right - left + 8));
+    overlay.setAttribute('height', String(bottom - top + 6));
+    overlay.setAttribute('rx', '5');
+    overlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
+    layer.appendChild(overlay);
+  }
+  if (layer.childNodes.length) svg.appendChild(layer);
+  sendDetachedPreviewState();
+}
+
+function openSelectionInNewTab() {
+  const range = selectedSourceLineRange();
+  if (!range) return;
+  const extracted = sourceForSelection(state.source, range.start, range.end, state.sourceNavigationIndex);
+  if (!extracted) return;
+  addDocumentTab(extracted.source, `${baseName()}-selection.puml`, {
+    isNew: true,
+    selectionStart: extracted.selectionStart,
+    selectionEnd: extracted.selectionEnd
+  });
 }
 
 const SVG_LINE_ATTRIBUTES = ['data-source-line', 'data-line', 'data-line-number', 'data-sourceLine'];
@@ -1234,6 +1403,8 @@ function updateFileStatus() {
   els.fileStatus.classList.toggle('unsaved', dirty);
   els.fileStatus.classList.toggle('saved', !dirty);
   document.title = `${dirty ? '● ' : ''}${state.filename || 'diagram.puml'} • PlantUML Local Studio`;
+  syncActiveDocument();
+  renderDocumentTabs();
   sendDetachedPreviewState();
 }
 
@@ -1369,7 +1540,7 @@ async function saveSourceAs() {
   }
 }
 
-async function openSourceFile() {
+async function openSourceFile(inNewTab = false) {
   try {
     if ('showOpenFilePicker' in window) {
       const [handle] = await window.showOpenFilePicker({
@@ -1377,9 +1548,12 @@ async function openSourceFile() {
         types: [{ description: 'PlantUML source', accept: { 'text/plain': ['.puml', '.plantuml', '.pu', '.txt'] } }]
       });
       const file = await handle.getFile();
-      replaceSource(await file.text(), file.name, { fileHandle: handle, saved: true });
+      const source = await file.text();
+      if (inNewTab) addDocumentTab(source, file.name, { fileHandle: handle, saved: true });
+      else replaceSource(source, file.name, { fileHandle: handle, saved: true });
       return;
     }
+    openFileInNewTab = inNewTab;
     els.fileInput.click();
   } catch (error) {
     if (error?.name !== 'AbortError') showError(`Open failed. ${error?.message || error}`);
@@ -1603,8 +1777,9 @@ els.unfoldAllBtn.addEventListener('click', () => {
   unfoldAllPreserveCaret();
   els.renderStatus.textContent = count ? 'All blocks expanded' : 'No blocks are collapsed';
 });
-document.querySelector('#newBtn').addEventListener('click', () => replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
-document.querySelector('#openBtn').addEventListener('click', openSourceFile);
+document.querySelector('#newBtn').addEventListener('click', () => addDocumentTab('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
+document.querySelector('#openBtn').addEventListener('click', () => openSourceFile(false));
+document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
 document.querySelector('#saveAsBtn').addEventListener('click', saveSourceAs);
 document.querySelector('#quickSaveBtn').addEventListener('click', () => saveSource());
@@ -1824,9 +1999,24 @@ els.fileInput.addEventListener('change', async () => {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   const text = await file.text();
-  replaceSource(text, file.name, { saved: true });
+  if (openFileInNewTab) addDocumentTab(text, file.name, { saved: true });
+  else replaceSource(text, file.name, { saved: true });
+  openFileInNewTab = false;
   els.fileInput.value = '';
 });
+
+els.documentTabs.addEventListener('click', event => {
+  const close = event.target.closest('[data-close-tab]');
+  if (close) {
+    event.stopPropagation();
+    closeDocumentTab(close.dataset.closeTab);
+    return;
+  }
+  const tab = event.target.closest('[data-tab-id]');
+  if (tab) activateDocumentTab(tab.dataset.tabId);
+});
+els.selectionOpenTabBtn.addEventListener('click', openSelectionInNewTab);
+for (const eventName of ['select', 'keyup', 'mouseup']) els.editor.addEventListener(eventName, () => requestAnimationFrame(refreshSelectionViewer));
 
 let quickEditRecord = null;
 let quickEditTimer = null;
@@ -1924,13 +2114,15 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('beforeunload', event => {
-  if (!isSourceDirty()) return;
+  syncActiveDocument();
+  if (!documentTabs.some(isDocumentDirty)) return;
   event.preventDefault();
   event.returnValue = '';
 });
 
 async function init() {
   try {
+    renderDocumentTabs();
     els.renderStatus.textContent = 'Loading Viz.js…';
     await loadClassicScript(vizGlobalUrl);
     els.renderStatus.textContent = 'Engine ready';
