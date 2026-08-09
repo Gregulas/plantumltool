@@ -1066,7 +1066,8 @@ body.resizing-rows * { cursor: row-resize !important; user-select: none !importa
 }
 .color-picker-close:hover { border: 0; color: #eff8f8; background: #203033; }
 .color-picker-main { padding: 10px; display: grid; gap: 10px; }
-.native-color-wrap {
+.native-color-trigger {
+  width: 100%;
   min-height: 37px;
   padding: 5px 8px;
   display: flex;
@@ -1077,20 +1078,22 @@ body.resizing-rows * { cursor: row-resize !important; user-select: none !importa
   background: #1a282a;
   cursor: pointer;
 }
-.native-color-wrap:hover { border-color: #3bc6c2; }
+.native-color-trigger:hover { border-color: #3bc6c2; }
 .native-color-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.native-color-chip {
   width: 38px;
   height: 25px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
+  flex: 0 0 38px;
+  border: 1px solid #587072;
   border-radius: 5px;
-  background: transparent;
-  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
-.native-color-input::-webkit-color-swatch-wrapper { padding: 0; }
-.native-color-input::-webkit-color-swatch { border: 1px solid #587072; border-radius: 5px; }
-.native-color-input::-moz-color-swatch { border: 1px solid #587072; border-radius: 5px; }
 .native-color-label { color: #dce8e9; font-size: 11px; font-weight: 700; }
 .color-value-row { display: flex; align-items: center; gap: 8px; }
 .color-preview {

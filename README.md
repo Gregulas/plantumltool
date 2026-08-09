@@ -15,7 +15,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Last-known-good preview: invalid edits never replace the most recent valid diagram
 - PlantUML-aware autocomplete for directives, elements, arrows, control blocks, styles, and snippets
 - PlantUML syntax highlighting for object types, references, arrows, strings, comments, colors, directives, and block keywords
-- Inline color picker: click or move the caret onto a PlantUML color token to open a compact visual selector and swatch palette
+- Inline color picker: click or move the caret onto a PlantUML color token to open a compact visual selector, reliable system picker, and swatch palette
 - Type-based object colors: all objects of the same PlantUML type share the same color throughout the script
 - Prose stays neutral: note bodies and relationship/message text after `:` are intentionally not syntax-colored
 - Collapsible PlantUML blocks with gutter controls plus Fold all / Unfold all actions

@@ -49,6 +49,19 @@ export function findColorTokenAt(source, position) {
   return null;
 }
 
+export function openNativeColorPicker(input) {
+  if (typeof input?.showPicker === 'function') {
+    try {
+      input.showPicker();
+      return 'showPicker';
+    } catch {
+      // Fall back for browsers that expose showPicker but reject the call.
+    }
+  }
+  input?.click();
+  return 'click';
+}
+
 function caretCoordinates(textarea, position, relativeTo) {
   const mirror = document.createElement('div');
   const style = getComputedStyle(textarea);
@@ -94,10 +107,11 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
       <button class="color-picker-close" type="button" aria-label="Close color picker">×</button>
     </div>
     <div class="color-picker-main">
-      <label class="native-color-wrap" title="Open system color picker">
-        <input class="native-color-input" type="color" value="#32bcbb" />
+      <button class="native-color-trigger" type="button" title="Open system color picker">
+        <span class="native-color-chip" aria-hidden="true"></span>
         <span class="native-color-label">Choose color</span>
-      </label>
+      </button>
+      <input class="native-color-input" type="color" value="#32bcbb" tabindex="-1" aria-label="System color picker" />
       <div class="color-value-row">
         <span class="color-preview" aria-hidden="true"></span>
         <code class="color-value"></code>
@@ -111,15 +125,19 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
   host.appendChild(popup);
 
   const nativeInput = popup.querySelector('.native-color-input');
+  const nativeTrigger = popup.querySelector('.native-color-trigger');
+  const nativeChip = popup.querySelector('.native-color-chip');
   const original = popup.querySelector('.color-picker-original');
   const valueLabel = popup.querySelector('.color-value');
   const preview = popup.querySelector('.color-preview');
   let range = null;
   let currentValue = '#32bcbb';
+  let nativePickerOpen = false;
 
   function close({ restoreFocus = false } = {}) {
     if (popup.hidden) return;
     popup.hidden = true;
+    nativePickerOpen = false;
     range = null;
     onClose?.();
     if (restoreFocus) textarea.focus({ preventScroll: true });
@@ -141,6 +159,7 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
   function paintValue(value) {
     currentValue = normalizeColorForPicker(value);
     nativeInput.value = currentValue;
+    nativeChip.style.background = currentValue;
     valueLabel.textContent = currentValue.toUpperCase();
     preview.style.background = currentValue;
   }
@@ -176,8 +195,19 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     return true;
   }
 
+  nativeTrigger.addEventListener('click', () => {
+    nativePickerOpen = true;
+    openNativeColorPicker(nativeInput);
+  });
   nativeInput.addEventListener('input', () => apply(nativeInput.value));
-  nativeInput.addEventListener('change', () => apply(nativeInput.value, { closeAfter: true, focusAfter: true }));
+  nativeInput.addEventListener('change', () => {
+    nativePickerOpen = false;
+    apply(nativeInput.value, { closeAfter: true, focusAfter: true });
+  });
+  nativeInput.addEventListener('cancel', () => {
+    nativePickerOpen = false;
+    nativeTrigger.focus({ preventScroll: true });
+  });
 
   popup.querySelector('.color-picker-close').addEventListener('click', () => close({ restoreFocus: true }));
   popup.querySelector('.color-swatches').addEventListener('mousedown', event => event.preventDefault());
@@ -198,11 +228,13 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     if (!popup.hidden) positionPopup();
   });
   textarea.addEventListener('blur', () => setTimeout(() => {
+    if (nativePickerOpen) return;
     if (!popup.contains(document.activeElement)) close();
   }, 100));
 
   document.addEventListener('pointerdown', event => {
     if (popup.hidden || popup.contains(event.target) || event.target === textarea) return;
+    nativePickerOpen = false;
     close();
   });
 
