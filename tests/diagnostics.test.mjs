@@ -57,6 +57,16 @@ test('renderer errors use readable summary and preserve full detail', () => {
   assert.equal(diagnostic.detail, raw);
 });
 
+test('classifies browser diagram size limits as rendering capacity errors', () => {
+  const raw = 'java.lang.RuntimeException: Diagram too large for browser rendering: 1348x4132 (max 4096)';
+  const diagnostic = rendererDiagnostic(raw, '@startuml\n@enduml');
+  assert.equal(diagnostic.source, 'render-limit');
+  assert.equal(diagnostic.line, null);
+  assert.equal(diagnostic.message, 'Diagram is too large for browser rendering (1348 × 4132; maximum dimension 4096).');
+  assert.match(diagnostic.suggestion, /scale max 4000 height/);
+  assert.equal(diagnostic.detail, raw);
+});
+
 
 test('warns when the same reference is declared twice', () => {
   const source = `@startuml

@@ -632,14 +632,21 @@ export function rendererDiagnostic(message, source, fallbackLine = null) {
     || text.match(/\b(?:at|on)\s+(\d+)\b/i);
   const line = lineMatch ? Number(lineMatch[1]) : fallbackLine;
 
+  const isRenderLimit = /diagram too large for browser rendering/i.test(text);
   let suggestion = 'Review the reported line and the line immediately before it; PlantUML parser errors are often caused by an unclosed block, quote, or malformed relationship.';
+  if (isRenderLimit) suggestion = 'Reduce the diagram dimensions, split it into smaller diagrams, or add a PlantUML scale directive such as "scale max 4000 height" near the start of the script.';
   if (/syntax error/i.test(text)) suggestion = 'Check the reported line for a misspelled keyword, malformed arrow, missing block terminator, or unclosed quote.';
   if (/cannot|unknown|not found/i.test(text)) suggestion = 'Check the referenced name, include, directive, or keyword spelling.';
 
+  const sizeMatch = text.match(/diagram too large for browser rendering:\s*(\d+)x(\d+)\s*\(max\s*(\d+)\)/i);
+  const readableMessage = sizeMatch
+    ? `Diagram is too large for browser rendering (${sizeMatch[1]} × ${sizeMatch[2]}; maximum dimension ${sizeMatch[3]}).`
+    : readableRendererMessage(text, line);
+
   return diag({
-    source: 'renderer',
+    source: isRenderLimit ? 'render-limit' : 'renderer',
     line,
-    message: readableRendererMessage(text, line),
+    message: readableMessage,
     detail: text,
     suggestion
   });

@@ -23,7 +23,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Context suggestions for participant/class/component aliases declared in the current diagram
 - Live syntax diagnostics with line-specific errors and warnings while you type
 - Semantic reference warnings for duplicate declarations and references used without a definition
-- PlantUML renderer/parser errors are surfaced in the Problems panel
+- PlantUML parser errors and browser rendering limits are identified separately in the Problems panel
 - Suggested fixes for common mistakes, with one-click quick fixes when the correction is deterministic
 - Error/warning markers beside affected line numbers and click-to-jump navigation
 - Fully local rendering after dependencies are installed
