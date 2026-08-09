@@ -921,7 +921,7 @@ function refreshSelectionViewer() {
   if (!range || !index || !svg) return;
   const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   layer.classList.add('source-selection-overlays');
-  const seen = new Set();
+  const bestByRecord = new Map();
   for (const node of els.previewCanvas.querySelectorAll('[data-source-nav-id]')) {
     const record = index.byId.get(node.dataset.sourceNavId);
     if (!record || record.line < range.startLine || record.line > range.endLine) continue;
@@ -937,20 +937,35 @@ function refreshSelectionViewer() {
     const top = Math.min(...points.map(point => point.y));
     const right = Math.max(...points.map(point => point.x));
     const bottom = Math.max(...points.map(point => point.y));
-    const key = [Math.round(left), Math.round(top), Math.round(right), Math.round(bottom)].join(':');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    overlay.classList.add('source-selection-overlay');
-    overlay.setAttribute('x', String(left - 4));
-    overlay.setAttribute('y', String(top - 3));
-    overlay.setAttribute('width', String(right - left + 8));
-    overlay.setAttribute('height', String(bottom - top + 6));
-    overlay.setAttribute('rx', '5');
-    overlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
-    layer.appendChild(overlay);
+    const classes = node.getAttribute('class') || '';
+    const hasNativeLine = SVG_LINE_ATTRIBUTES.some(name => node.hasAttribute(name));
+    const semanticGroup = node.tagName.toLowerCase() === 'g' && /message|participant|entity|class|component|actor|node|cluster|state|object|usecase|note|group|divider|delay/i.test(classes);
+    const rank = hasNativeLine ? 100 : semanticGroup ? 80 : node.tagName.toLowerCase() === 'text' ? 40 : 10;
+    const candidate = { left, top, right, bottom, rank, area: (right - left) * (bottom - top) };
+    const current = bestByRecord.get(record.id);
+    if (!current || candidate.rank > current.rank || (candidate.rank === current.rank && candidate.area > current.area)) bestByRecord.set(record.id, candidate);
   }
-  if (layer.childNodes.length) svg.appendChild(layer);
+  const bounds = [...bestByRecord.values()];
+  if (!bounds.length) return;
+  const left = Math.min(...bounds.map(item => item.left));
+  const top = Math.min(...bounds.map(item => item.top));
+  const right = Math.max(...bounds.map(item => item.right));
+  const bottom = Math.max(...bounds.map(item => item.bottom));
+  const viewBox = svg.viewBox?.baseVal;
+  const paddedLeft = viewBox?.width ? Math.max(viewBox.x, left - 8) : left - 8;
+  const paddedTop = viewBox?.height ? Math.max(viewBox.y, top - 7) : top - 7;
+  const paddedRight = viewBox?.width ? Math.min(viewBox.x + viewBox.width, right + 8) : right + 8;
+  const paddedBottom = viewBox?.height ? Math.min(viewBox.y + viewBox.height, bottom + 7) : bottom + 7;
+  const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  overlay.classList.add('source-selection-overlay');
+  overlay.setAttribute('x', String(paddedLeft));
+  overlay.setAttribute('y', String(paddedTop));
+  overlay.setAttribute('width', String(Math.max(1, paddedRight - paddedLeft)));
+  overlay.setAttribute('height', String(Math.max(1, paddedBottom - paddedTop)));
+  overlay.setAttribute('rx', '7');
+  overlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
+  layer.appendChild(overlay);
+  svg.appendChild(layer);
   sendDetachedPreviewState();
 }
 
