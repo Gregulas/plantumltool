@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detachedPreviewLifecycle, detachedPreviewState, isDetachedPreviewLifecycle, isDetachedPreviewState } from '../src/detached-preview.js';
+import { detachedPreviewAction, detachedPreviewLifecycle, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle, isDetachedPreviewState } from '../src/detached-preview.js';
 
 test('creates a serializable detached preview update', () => {
   const message = detachedPreviewState({ svg: '<svg></svg>', filename: 'flow.puml', dark: true, status: 'Rendered locally' });
@@ -8,6 +8,13 @@ test('creates a serializable detached preview update', () => {
     type: 'detached-preview-state', svg: '<svg></svg>', filename: 'flow.puml', theme: 'dark', status: 'Rendered locally'
   });
   assert.equal(isDetachedPreviewState(message), true);
+});
+
+test('creates identifiable detached preview interaction messages', () => {
+  const action = detachedPreviewAction('detached-preview-navigate', 'preview-42', { recordId: 'record-7' });
+  assert.deepEqual(action, { type: 'detached-preview-navigate', previewId: 'preview-42', recordId: 'record-7' });
+  assert.equal(isDetachedPreviewAction(action, 'detached-preview-navigate'), true);
+  assert.equal(isDetachedPreviewAction(action, 'detached-preview-quick-edit'), false);
 });
 
 test('rejects unrelated or malformed preview messages', () => {

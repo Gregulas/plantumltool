@@ -24,3 +24,11 @@ export function detachedPreviewLifecycle(type, previewId = 'detached-preview') {
 export function isDetachedPreviewLifecycle(value, type) {
   return value?.type === type && typeof value.previewId === 'string' && value.previewId.length > 0;
 }
+
+export function detachedPreviewAction(type, previewId, payload = {}) {
+  return { type, previewId: String(previewId || 'detached-preview'), ...payload };
+}
+
+export function isDetachedPreviewAction(value, type) {
+  return value?.type === type && typeof value.previewId === 'string' && value.previewId.length > 0;
+}

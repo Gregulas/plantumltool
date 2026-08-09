@@ -16,7 +16,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
-import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState, isDetachedPreviewLifecycle } from './detached-preview.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 
 const DEFAULT_SOURCE = `@startuml
@@ -399,11 +399,16 @@ const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new Broa
 
 function currentDetachedPreviewState() {
   return detachedPreviewState({
-    svg: state.svg,
+    svg: els.previewCanvas.querySelector('svg')?.outerHTML || state.svg,
     filename: state.filename,
     dark: state.dark,
     status: els.renderStatus?.textContent || 'Synchronized with editor'
   });
+}
+
+function sendDetachedPreviewMessage(message, target = null) {
+  detachedPreviewChannel?.postMessage(message);
+  if (target && !target.closed) target.postMessage(message, location.origin);
 }
 
 function sendDetachedPreviewState(target = detachedPreviewWindow) {
@@ -468,6 +473,32 @@ function handleDetachedPreviewLifecycle(message, target = null) {
   }
 }
 
+function handleDetachedPreviewAction(message, target = null) {
+  if (isDetachedPreviewAction(message, 'detached-preview-navigate')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) navigateToDiagramRecord(record);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-request')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (!record || record.type !== 'element') return;
+    const current = relocateNavigationTarget(record, canonicalSource()) || record;
+    const line = splitLines(canonicalSource())[current.line - 1] || current.statement || '';
+    const appearance = readObjectAppearance(line);
+    sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-quick-edit-data', message.previewId, {
+      recordId: record.id,
+      title: describeNavigationRecord(current),
+      color: appearance.color,
+      style: appearance.style
+    }), target);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-apply')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) applyAppearanceToRecord(record, { color: message.color, style: message.style });
+  }
+}
+
 setInterval(() => {
   const expiredBefore = Date.now() - DETACHED_PREVIEW_LEASE_MS;
   for (const [previewId, lastSeen] of detachedPreviewLastSeen) {
@@ -493,9 +524,13 @@ function openDetachedPreview() {
 
 detachedPreviewChannel?.addEventListener('message', event => {
   handleDetachedPreviewLifecycle(event.data);
+  handleDetachedPreviewAction(event.data);
 });
 window.addEventListener('message', event => {
-  if (event.origin === location.origin) handleDetachedPreviewLifecycle(event.data, event.source);
+  if (event.origin === location.origin) {
+    handleDetachedPreviewLifecycle(event.data, event.source);
+    handleDetachedPreviewAction(event.data, event.source);
+  }
 });
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
@@ -900,13 +935,8 @@ function describeNavigationRecord(record) {
   return readableDiagramLabel(record.label || record.reference || record.message || record.kind) || 'diagram element';
 }
 
-function navigateFromDiagram(event) {
-  const renderedRecord = renderedNavigationRecordFromEvent(event);
+function navigateToDiagramRecord(renderedRecord) {
   if (!renderedRecord) return false;
-
-  event.preventDefault();
-  event.stopPropagation();
-
   const currentRecord = relocateNavigationTarget(renderedRecord, canonicalSource());
   if (currentRecord) {
     jumpToLine(currentRecord.line, 1, { selectLine: true });
@@ -922,6 +952,14 @@ function navigateFromDiagram(event) {
   els.navigationStatus.textContent = `${describeNavigationRecord(renderedRecord)} • last rendered line ${renderedRecord.line}`;
   els.navigationStatus.classList.add('navigation-stale');
   return true;
+}
+
+function navigateFromDiagram(event) {
+  const renderedRecord = renderedNavigationRecordFromEvent(event);
+  if (!renderedRecord) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  return navigateToDiagramRecord(renderedRecord);
 }
 
 function applyZoom() {
@@ -1785,15 +1823,14 @@ function scheduleObjectQuickEdit(event, record) {
   quickEditTimer = setTimeout(() => showObjectQuickEdit(point, record), 450);
 }
 
-els.objectQuickEdit.addEventListener('submit', event => {
-  event.preventDefault();
-  if (!quickEditRecord) return;
-  const current = relocateNavigationTarget(quickEditRecord, canonicalSource()) || quickEditRecord;
+function applyAppearanceToRecord(record, appearance) {
+  if (!record) return false;
+  const current = relocateNavigationTarget(record, canonicalSource()) || record;
   const updated = updateObjectAppearance(canonicalSource(), current.line, {
-    color: els.quickEditColor.value,
-    style: els.quickEditStyle.value
+    color: appearance.color,
+    style: appearance.style
   });
-  if (updated === canonicalSource()) return closeObjectQuickEdit();
+  if (updated === canonicalSource()) return false;
   editHistory.checkpoint();
   unfoldAllPreserveCaret();
   els.editor.value = updated;
@@ -1804,6 +1841,12 @@ els.objectQuickEdit.addEventListener('submit', event => {
   updateEditorMeta();
   scheduleRender();
   els.renderStatus.textContent = 'Object appearance updated';
+  return true;
+}
+
+els.objectQuickEdit.addEventListener('submit', event => {
+  event.preventDefault();
+  applyAppearanceToRecord(quickEditRecord, { color: els.quickEditColor.value, style: els.quickEditStyle.value });
   closeObjectQuickEdit();
 });
 
