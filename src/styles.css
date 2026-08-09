@@ -825,6 +825,26 @@ button.primary:hover { background: var(--accent-strong); }
   white-space: nowrap;
 }
 .quick-fix:hover { background: color-mix(in srgb, var(--accent-soft) 72%, var(--accent)); }
+.diagnostic-actions {
+  align-self: center;
+  margin-right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.diagnostic-actions .quick-fix { margin: 0; }
+.diagnostic-ignore {
+  min-height: 30px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-color: var(--border);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.diagnostic-ignore:hover { color: var(--text); border-color: var(--accent); }
 
 .diagnostic-details {
   border-top: 1px solid var(--border);
@@ -888,7 +908,8 @@ button.primary:hover { background: var(--accent-strong); }
 
 @media (max-width: 700px) {
   .diagnostic-row { grid-template-columns: 1fr; }
-  .quick-fix { justify-self: start; margin: 0 10px 8px 41px; }
+  .diagnostic-actions { justify-self: start; margin: 0 10px 8px 41px; justify-content: flex-start; }
+  .quick-fix { justify-self: start; margin: 0; }
   .diagnostic-detail-body { padding-left: 14px; }
   .diagnostic-details summary { padding-left: 14px; }
 }

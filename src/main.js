@@ -159,6 +159,8 @@ const state = {
   rendering: false,
   renderSeq: 0,
   localDiagnostics: [],
+  ignoredSpellingOccurrences: new Set(),
+  ignoredSpellingWords: new Set(),
   rendererDiagnostics: [],
   lastSuccessfulSource: '',
   workspaceSplit: Number(localStorage.getItem('plantuml-workspace-split')) || 48,
@@ -1081,7 +1083,11 @@ function renderDiagnostics() {
                 ${item.suggestion ? `<small><b>Suggestion:</b> ${escapeHtml(item.suggestion)}</small>` : ''}
               </span>
             </button>
-            ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ ${escapeHtml(item.fix.label)}</button>` : ''}
+            ${(item.fix || item.source === 'spelling') ? `<div class="diagnostic-actions">
+              ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ ${escapeHtml(item.fix.label)}</button>` : ''}
+              ${item.source === 'spelling' ? `<button class="diagnostic-ignore" type="button" data-action="ignore-spelling" data-id="${escapeHtml(item.id)}">Ignore</button>
+              <button class="diagnostic-ignore" type="button" data-action="ignore-all-spelling" data-id="${escapeHtml(item.id)}">Ignore all</button>` : ''}
+            </div>` : ''}
           </div>
           <details class="diagnostic-details">
             <summary><span class="details-closed">Show details</span><span class="details-open">Hide details</span></summary>
@@ -1105,8 +1111,22 @@ function renderDiagnostics() {
 
 function runLocalDiagnostics() {
   const source = canonicalSource();
-  state.localDiagnostics = [...analyzePlantUml(source), ...analyzeProseSpelling(source)];
+  const spelling = analyzeProseSpelling(source).filter(item => {
+    const word = item.word?.toLowerCase();
+    return !state.ignoredSpellingOccurrences.has(item.ignoreKey) && !state.ignoredSpellingWords.has(word);
+  });
+  state.localDiagnostics = [...analyzePlantUml(source), ...spelling];
   renderDiagnostics();
+}
+
+function ignoreSpellingDiagnostic(item, allOccurrences = false) {
+  if (item?.source !== 'spelling' || !item.word) return;
+  if (allOccurrences) state.ignoredSpellingWords.add(item.word.toLowerCase());
+  else if (item.ignoreKey) state.ignoredSpellingOccurrences.add(item.ignoreKey);
+  runLocalDiagnostics();
+  els.renderStatus.textContent = allOccurrences
+    ? `Ignored all occurrences of “${item.word}” in this diagram`
+    : `Ignored this occurrence of “${item.word}”`;
 }
 
 function updateSyntaxHighlight() {
@@ -1381,6 +1401,8 @@ const colorPicker = createColorPicker({
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
   colorPicker.close();
+  state.ignoredSpellingOccurrences.clear();
+  state.ignoredSpellingWords.clear();
   state.source = source;
   state.foldedStarts.clear();
   state.foldProjection = buildFoldProjection(source, state.foldedStarts);
@@ -1541,6 +1563,8 @@ els.problemsList.addEventListener('click', event => {
     applyDiagnosticFix(item);
     return;
   }
+  if (control.dataset.action === 'ignore-spelling') return ignoreSpellingDiagnostic(item);
+  if (control.dataset.action === 'ignore-all-spelling') return ignoreSpellingDiagnostic(item, true);
   if (control.dataset.action === 'jump') jumpToLine(item.line, item.column);
 });
 

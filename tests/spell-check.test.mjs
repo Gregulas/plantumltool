@@ -19,6 +19,13 @@ end note
   assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.message), [
     'Possible spelling mistake: “Recieve”.', 'Possible spelling mistake: “aplication”.', 'Possible spelling mistake: “statuz”.'
   ]);
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.ignoreKey), ['recieve:1', 'aplication:1', 'statuz:1']);
+});
+
+test('numbers repeated misspellings for stable single-occurrence ignoring', () => {
+  const diagnostics = analyzeProseSpelling('@startuml\nA -> B: aplication\nB -> A: aplication\n@enduml', checker);
+  assert.deepEqual(diagnostics.map(item => item.ignoreKey), ['aplication:1', 'aplication:2']);
+  assert.ok(diagnostics.every(item => item.word === 'aplication'));
 });
 
 test('checks inline notes and creates an exact replacement fix', () => {

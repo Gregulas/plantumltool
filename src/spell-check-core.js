@@ -58,15 +58,21 @@ function shouldCheckWord(word) {
 
 export function analyzeProseSpelling(source, checker) {
   const diagnostics = [];
+  const occurrences = new Map();
   for (const segment of proseSegments(source)) {
     for (const match of segment.text.matchAll(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)) {
       const word = match[0];
       if (!shouldCheckWord(word) || checker.correct(word)) continue;
       const suggestions = checker.suggest(word).slice(0, 3);
       const replacement = suggestions[0];
+      const normalizedWord = word.toLowerCase();
+      const occurrence = (occurrences.get(normalizedWord) || 0) + 1;
+      occurrences.set(normalizedWord, occurrence);
       diagnostics.push({
         id: `spell-${segment.line}-${segment.offset + match.index}-${word.toLowerCase()}`,
         severity: 'warning', source: 'spelling', line: segment.line,
+        word,
+        ignoreKey: `${normalizedWord}:${occurrence}`,
         column: segment.column + match.index,
         message: `Possible spelling mistake: “${word}”.`,
         suggestion: suggestions.length ? `Suggested spelling: ${suggestions.join(', ')}.` : 'Check this word or keep it if it is a project-specific term.',
