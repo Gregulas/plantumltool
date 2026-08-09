@@ -44,3 +44,8 @@ test('checks text displayed on asynchronous arrows', () => {
   const source = '@startuml\nA ->> B: aplication queued\nB -->> A: statuz received\n@enduml';
   assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
 });
+
+test('checks text on asynchronous arrows with endpoint decorations', () => {
+  const source = '@startuml\nA -->>o B: aplication queued\nB o<<-- A: statuz received\n@enduml';
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
+});

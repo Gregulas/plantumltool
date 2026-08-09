@@ -8,6 +8,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Detachable live preview window that can be moved to a second monitor while the editor stays on the primary display
 - Detached diagrams retain click-to-source navigation and object appearance quick editing
 - Async sequence arrows such as `->>`, `-->>`, and `<<--` retain exact source navigation in embedded and detached previews
+- Decorated async arrows such as `-->>o` and `o<<--` are parsed without treating endpoint decorations as object references
 - Inline and multiline note text navigates back to its exact source line in embedded and detached previews
 - Diagram-to-source navigation covers all 32 supported object declarations, including ArchiMate and state start/end objects
 - Editor-only main layout while detached; closing the preview restores the split view with the embedded diagram fitted

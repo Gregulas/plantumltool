@@ -499,7 +499,7 @@ function relationshipReferences(trimmed) {
   // Avoid treating arrows embedded in activity text, notes, titles, or styling as element relationships.
   if (/^(?::|note\b|legend\b|title\b|caption\b|header\b|footer\b|skinparam\b)/i.test(trimmed)) return [];
   // Covers common sequence, class, component, deployment and state arrows.
-  const arrow = trimmed.match(/(?:<{1,2}[-.=o*|]+>{1,2}|[-.=o*|]+>{1,2}|<{1,2}[-.=o*|]+|--|\.\.)/);
+  const arrow = trimmed.match(/(?:[o*x]?<{1,2}[-.=o*x|{}]+>{1,2}[o*x]?|[-.=o*x|{}]+>{1,2}[o*x]?|[o*x]?<{1,2}[-.=o*x|{}]+|--|\.\.)/);
   if (!arrow) return [];
 
   const left = trimmed.slice(0, arrow.index);

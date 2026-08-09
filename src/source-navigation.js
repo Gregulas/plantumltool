@@ -131,7 +131,7 @@ function referenceTokenAtStart(text) {
 function parseRelationship(trimmed) {
   if (/^(?::|note\b|legend\b|title\b|caption\b|header\b|footer\b|skinparam\b|!|@)/i.test(trimmed)) return null;
   // Relationship operators across sequence, class, component, state and deployment diagrams.
-  const arrow = trimmed.match(/(?:<{1,2}[-.=o*x|{}]+>{1,2}|[-.=o*x|{}]+>{1,2}|<{1,2}[-.=o*x|{}]+|--|\.\.)/);
+  const arrow = trimmed.match(/(?:[o*x]?<{1,2}[-.=o*x|{}]+>{1,2}[o*x]?|[-.=o*x|{}]+>{1,2}[o*x]?|[o*x]?<{1,2}[-.=o*x|{}]+|--|\.\.)/);
   if (!arrow) return null;
   const left = trimmed.slice(0, arrow.index);
   const right = trimmed.slice(arrow.index + arrow[0].length);

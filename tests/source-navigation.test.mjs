@@ -58,6 +58,20 @@ Portal <<-- API: Callback notification
   assert.equal(target?.line, 5);
 });
 
+test('keeps endpoint decorations inside asynchronous arrow operators', () => {
+  const source = `@startuml
+participant Portal
+participant API
+Portal -->>o API: Queued request
+API o<<-- Portal: Callback response
+@enduml`;
+  const relationships = buildSourceNavigationIndex(source).records.filter(record => record.type === 'relationship');
+  assert.deepEqual(relationships.map(record => ({ source: record.source, target: record.target, message: record.message })), [
+    { source: 'Portal', target: 'API', message: 'Queued request' },
+    { source: 'API', target: 'Portal', message: 'Callback response' }
+  ]);
+});
+
 test('maps inline and multiline note text to its exact source line', () => {
   const source = `@startuml
 participant Portal
