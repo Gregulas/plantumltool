@@ -47,6 +47,10 @@ export function plantUmlSvgLineToSourceLine(value, wrapperLineOffset = 0) {
 export function canonicalNavigationText(value) {
   return String(value ?? '')
     .replace(/\\n/g, ' ')
+    .replace(/<\/?(?:b|i|u|s|strike|wavy|color|size|font|back(?:ground)?)(?:=[^>]*)?>/gi, '')
+    .replace(/\*\*(.*?)\*\*/gs, '$1')
+    .replace(/__(.*?)__/gs, '$1')
+    .replace(/~~(.*?)~~/gs, '$1')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
@@ -54,6 +58,12 @@ export function canonicalNavigationText(value) {
     .replace(/["'`]/g, '')
     .toLowerCase()
     .trim();
+}
+
+export function registerNavigationRecord(index, record) {
+  if (!index?.byId || !record?.id) return false;
+  if (!index.byId.has(record.id)) index.byId.set(record.id, record);
+  return true;
 }
 
 function cleanDisplay(value) {

@@ -5,7 +5,7 @@ import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
 import { analyzePlantUml, rendererDiagnostic, extractSvgRenderError } from './diagnostics.js';
 import { analyzeProseSpelling } from './spell-check.js';
-import { buildSourceNavigationIndex, canonicalNavigationText, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
+import { buildSourceNavigationIndex, canonicalNavigationText, findTextNavigationTarget, plantUmlSvgLineToSourceLine, registerNavigationRecord, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
 import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './editor-behavior.js';
 import { formatPlantUmlEdit } from './formatter.js';
 import { highlightPlantUml } from './syntax-highlight.js';
@@ -860,6 +860,7 @@ function svgNavigationDescriptor(element) {
 
 function markSvgNavigationNode(node, record) {
   if (!node || !record) return;
+  registerNavigationRecord(state.sourceNavigationIndex, record);
   node.dataset.sourceNavId = record.id;
   node.classList.add('source-navigable');
   node.setAttribute('aria-label', `Go to PlantUML source line ${record.line}`);

@@ -1,6 +1,6 @@
 {
   "name": "plantuml-local-studio",
-  "version": "2.4.6",
+  "version": "2.4.7",
   "private": true,
   "type": "module",
   "description": "Offline local PlantUML editor and renderer with type-based syntax highlighting, inline color picker, collapsible blocks, autocomplete, formatting, diagnostics, semantic reference warnings, resizable panels, last-known-good rendering, and diagram-to-source navigation.",

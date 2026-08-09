@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSourceNavigationIndex,
+  canonicalNavigationText,
   findTextNavigationTarget,
   plantUmlSvgLineToSourceLine,
+  registerNavigationRecord,
   relocateNavigationTarget,
   resolveNavigationTarget
 } from '../src/source-navigation.js';
@@ -116,6 +118,20 @@ newpage Final page
     { type: 'delay', line: 9, label: 'Waiting period' },
     { type: 'page-separator', line: 10, label: 'Final page' }
   ]);
+});
+
+test('normalizes formatted note and separator text for rendered matching', () => {
+  assert.equal(canonicalNavigationText('**Important phase**'), canonicalNavigationText('Important phase'));
+  assert.equal(canonicalNavigationText('<b>Bold comment</b>'), canonicalNavigationText('Bold comment'));
+  assert.equal(canonicalNavigationText('Mixed **bold words** here'), canonicalNavigationText('Mixed bold words here'));
+});
+
+test('registers native SVG source-line records for detached navigation', () => {
+  const index = buildSourceNavigationIndex('@startuml\nnote over A\n**Bold comment**\nend note\n@enduml');
+  const nativeRecord = { id: 'nav-3-0', type: 'source-line', line: 3, label: 'Bold comment', statement: '**Bold comment**' };
+  assert.equal(index.byId.has(nativeRecord.id), false);
+  assert.equal(registerNavigationRecord(index, nativeRecord), true);
+  assert.equal(index.byId.get(nativeRecord.id), nativeRecord);
 });
 
 test('indexes every supported declared object type', () => {

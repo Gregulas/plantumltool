@@ -10,6 +10,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Async sequence arrows such as `->>`, `-->>`, and `<<--` retain exact source navigation in embedded and detached previews
 - Decorated async arrows such as `-->>o` and `o<<--` are parsed without treating endpoint decorations as object references
 - Repeated sequence dividers, delay separators, and named `newpage` boundaries retain their source order and exact navigation lines
+- Bold and formatted text in notes and separators retains click-to-source navigation in embedded and detached previews
 - Inline and multiline note text navigates back to its exact source line in embedded and detached previews
 - Diagram-to-source navigation covers all 32 supported object declarations, including ArchiMate and state start/end objects
 - Editor-only main layout while detached; closing the preview restores the split view with the embedded diagram fitted
