@@ -95,6 +95,29 @@ note over Portal: Inline explanatory comment
   assert.equal(findTextNavigationTarget(source, ['Inline explanatory comment'])?.line, 8);
 });
 
+test('indexes every sequence section, delay, and page separator in source order', () => {
+  const source = `@startuml
+participant A
+participant B
+== Repeated phase ==
+A -> B: First message
+... Waiting period ...
+== Repeated phase ==
+B -> A: Second message
+... Waiting period ...
+newpage Final page
+@enduml`;
+  const separators = buildSourceNavigationIndex(source).records
+    .filter(record => ['divider', 'delay', 'page-separator'].includes(record.type));
+  assert.deepEqual(separators.map(record => ({ type: record.type, line: record.line, label: record.label })), [
+    { type: 'divider', line: 4, label: 'Repeated phase' },
+    { type: 'delay', line: 6, label: 'Waiting period' },
+    { type: 'divider', line: 7, label: 'Repeated phase' },
+    { type: 'delay', line: 9, label: 'Waiting period' },
+    { type: 'page-separator', line: 10, label: 'Final page' }
+  ]);
+});
+
 test('indexes every supported declared object type', () => {
   const kinds = [
     'actor', 'participant', 'boundary', 'control', 'entity', 'database', 'collections', 'queue',

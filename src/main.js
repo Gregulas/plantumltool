@@ -5,7 +5,7 @@ import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
 import { analyzePlantUml, rendererDiagnostic, extractSvgRenderError } from './diagnostics.js';
 import { analyzeProseSpelling } from './spell-check.js';
-import { buildSourceNavigationIndex, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
+import { buildSourceNavigationIndex, canonicalNavigationText, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
 import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './editor-behavior.js';
 import { formatPlantUmlEdit } from './formatter.js';
 import { highlightPlantUml } from './syntax-highlight.js';
@@ -865,6 +865,36 @@ function markSvgNavigationNode(node, record) {
   node.setAttribute('aria-label', `Go to PlantUML source line ${record.line}`);
 }
 
+function decorateSequenceSeparatorNavigation(svg, index) {
+  const queues = new Map();
+  for (const record of index.records.filter(item => item.type === 'divider' || item.type === 'delay')) {
+    const key = `${record.type}:${canonicalNavigationText(record.label)}`;
+    if (!queues.has(key)) queues.set(key, []);
+    queues.get(key).push(record);
+  }
+
+  const occurrences = new Map();
+  for (const text of svg.querySelectorAll('text')) {
+    const label = canonicalNavigationText(text.textContent);
+    if (!label) continue;
+    const fontWeight = String(text.getAttribute('font-weight') || '').toLowerCase();
+    const fontSize = Number.parseFloat(text.getAttribute('font-size') || '');
+    const type = fontWeight === 'bold' || Number(fontWeight) >= 600
+      ? 'divider'
+      : Number.isFinite(fontSize) && fontSize <= 11
+        ? 'delay'
+        : null;
+    if (!type) continue;
+    const key = `${type}:${label}`;
+    const records = queues.get(key);
+    if (!records?.length) continue;
+    const occurrence = occurrences.get(key) || 0;
+    const record = records[Math.min(occurrence, records.length - 1)];
+    occurrences.set(key, occurrence + 1);
+    markSvgNavigationNode(text, record);
+  }
+}
+
 function decorateSvgNavigation(svg) {
   const index = state.sourceNavigationIndex;
   if (!index?.records?.length) return;
@@ -900,6 +930,11 @@ function decorateSvgNavigation(svg) {
       || findTextNavigationTarget(index.source, [descriptor.clickedText]);
     if (record) markSvgNavigationNode(text, record);
   }
+
+
+  // PlantUML does not emit source metadata for dividers and delays. Repeated
+  // labels must therefore be paired with source records in visual order.
+  decorateSequenceSeparatorNavigation(svg, index);
 }
 
 function renderedNavigationRecordFromEvent(event) {

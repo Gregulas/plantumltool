@@ -296,6 +296,30 @@ export function buildSourceNavigationIndex(source) {
       return;
     }
 
+    const delay = trimmed.match(/^\.\.\.\s*(.*?)\s*\.\.\.$/);
+    if (delay) {
+      records.push(makeRecord({
+        type: 'delay',
+        kind: 'sequence-delay',
+        label: delay[1].trim(),
+        line,
+        statement: raw
+      }, ++sequence));
+      return;
+    }
+
+    const pageSeparator = trimmed.match(/^newpage(?:\s+(.+))?$/i);
+    if (pageSeparator) {
+      records.push(makeRecord({
+        type: 'page-separator',
+        kind: 'sequence-page-separator',
+        label: pageSeparator[1]?.trim() || 'newpage',
+        line,
+        statement: raw
+      }, ++sequence));
+      return;
+    }
+
     // Sequence dividers render as labelled boxes, for example
     // "== Initial offer ==". Index them explicitly so repeated words in later
     // messages cannot steal diagram-to-source navigation.
@@ -409,7 +433,8 @@ export function resolveNavigationTarget(index, descriptor = {}) {
     }
 
     if (record.type === 'member' && clickedText && canonicalNavigationText(record.memberLabel) === clickedText) score += 220;
-    if (record.type === 'divider' && clickedText && canonicalNavigationText(record.label) === clickedText) score += 260;
+    if (['divider', 'delay', 'page-separator'].includes(record.type)
+      && clickedText && canonicalNavigationText(record.label) === clickedText) score += 260;
 
     if (score > bestScore) {
       bestScore = score;
