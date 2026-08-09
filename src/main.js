@@ -19,6 +19,7 @@ import { APP_VERSION } from './app-version.js';
 import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
+import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -322,6 +323,7 @@ app.innerHTML = `
             </div>
           </div>
           <div id="selectionActions" class="selection-actions" hidden><strong>Selected script</strong><button id="selectionOpenTabBtn" type="button">Open in new tab</button></div>
+          <div id="arrowActionMenu" class="arrow-action-menu" hidden><strong id="arrowActionTitle">Sequence call</strong><button id="arrowActivationBtn" type="button">Activate action</button></div>
         </div>
 
         <form id="objectQuickEdit" class="object-quick-edit" hidden>
@@ -398,6 +400,9 @@ const els = {
   ,documentTabs: document.querySelector('#documentTabs')
   ,selectionActions: document.querySelector('#selectionActions')
   ,selectionOpenTabBtn: document.querySelector('#selectionOpenTabBtn')
+  ,arrowActionMenu: document.querySelector('#arrowActionMenu')
+  ,arrowActionTitle: document.querySelector('#arrowActionTitle')
+  ,arrowActivationBtn: document.querySelector('#arrowActivationBtn')
 };
 
 let detachedPreviewWindow = null;
@@ -517,6 +522,21 @@ function handleDetachedPreviewAction(message, target = null) {
   if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-apply')) {
     const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
     if (record) applyAppearanceToRecord(record, { color: message.color, style: message.style });
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-request')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    const action = record && arrowActivationForRecord(record);
+    if (action) sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-activation-data', message.previewId, {
+      recordId: record.id,
+      title: describeNavigationRecord(record),
+      label: action.label
+    }), target);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-apply')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) applyArrowActivation(record);
   }
 }
 
@@ -1205,6 +1225,51 @@ function navigateFromDiagram(event) {
   event.preventDefault();
   event.stopPropagation();
   return navigateToDiagramRecord(renderedRecord);
+}
+
+let arrowActivationRecord = null;
+
+function closeArrowActionMenu() {
+  els.arrowActionMenu.hidden = true;
+  arrowActivationRecord = null;
+}
+
+function arrowActivationForRecord(record) {
+  const current = relocateNavigationTarget(record, canonicalSource()) || record;
+  return sequenceActivationAction(canonicalSource(), buildSourceNavigationIndex(canonicalSource()), current);
+}
+
+function showArrowActionMenu(event, record) {
+  const action = arrowActivationForRecord(record);
+  if (!action) return closeArrowActionMenu();
+  event.preventDefault();
+  event.stopPropagation();
+  arrowActivationRecord = record;
+  els.arrowActionTitle.textContent = describeNavigationRecord(record);
+  els.arrowActivationBtn.textContent = action.label;
+  const viewport = els.previewViewport.getBoundingClientRect();
+  els.arrowActionMenu.style.left = `${Math.min(viewport.width - 210, Math.max(10, event.clientX - viewport.left))}px`;
+  els.arrowActionMenu.style.top = `${Math.min(viewport.height - 100, Math.max(10, event.clientY - viewport.top))}px`;
+  els.arrowActionMenu.hidden = false;
+}
+
+function applyArrowActivation(record) {
+  const action = arrowActivationForRecord(record);
+  if (!action) return false;
+  const source = canonicalSource();
+  const updated = applySequenceActivation(source, action);
+  if (updated === source) return false;
+  editHistory.checkpoint();
+  unfoldAllPreserveCaret();
+  els.editor.value = updated;
+  state.source = updated;
+  state.foldProjection = buildFoldProjection(updated, state.foldedStarts);
+  editHistory.checkpoint();
+  state.rendererDiagnostics = [];
+  updateEditorMeta();
+  scheduleRender();
+  els.renderStatus.textContent = `${action.label} applied`;
+  return true;
 }
 
 function applyZoom() {
@@ -2125,6 +2190,14 @@ els.objectQuickEdit.addEventListener('pointerenter', () => clearTimeout(quickEdi
 els.objectQuickEdit.addEventListener('pointerleave', () => { quickEditTimer = setTimeout(closeObjectQuickEdit, 300); });
 
 els.previewCanvas.addEventListener('click', navigateFromDiagram);
+els.previewCanvas.addEventListener('contextmenu', event => {
+  const record = renderedNavigationRecordFromEvent(event);
+  if (record?.type === 'relationship') showArrowActionMenu(event, record);
+});
+els.arrowActivationBtn.addEventListener('click', () => {
+  if (arrowActivationRecord) applyArrowActivation(arrowActivationRecord);
+  closeArrowActionMenu();
+});
 els.previewCanvas.addEventListener('pointerover', event => {
   const record = renderedNavigationRecordFromEvent(event);
   if (!record) return;
@@ -2149,8 +2222,13 @@ els.previewViewport.addEventListener('wheel', event => {
 }, { passive: false });
 
 window.addEventListener('resize', () => {
+  closeArrowActionMenu();
   applyProblemsHeight(state.problemsHeight);
   applyZoom();
+});
+
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.arrow-action-menu')) closeArrowActionMenu();
 });
 
 window.addEventListener('beforeunload', event => {

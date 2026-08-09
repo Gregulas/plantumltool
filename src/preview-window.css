@@ -26,6 +26,10 @@ button:hover { border-color:var(--accent); }
 .detached-selection-actions[hidden] { display:none; }
 .detached-selection-actions strong { font-size:12px; }
 .detached-selection-actions button { color:white; background:var(--accent); border-color:var(--accent); }
+.detached-arrow-action { position:fixed; z-index:24; width:208px; padding:9px; display:grid; gap:8px; color:var(--text); background:var(--surface); border:1px solid var(--accent); border-radius:9px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
+.detached-arrow-action[hidden] { display:none; }
+.detached-arrow-action strong { overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.detached-arrow-action button { color:white; background:var(--accent); border-color:var(--accent); }
 .detached-quick-edit { position:fixed; z-index:20; width:280px; padding:10px; display:grid; gap:9px; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
 .detached-quick-edit[hidden] { display:none; }
 .detached-quick-edit > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:8px; }

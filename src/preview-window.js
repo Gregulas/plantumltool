@@ -28,6 +28,7 @@ document.querySelector('#previewApp').innerHTML = `
       <div class="detached-quick-edit-actions"><button id="detachedQuickEditReset" type="button">Clear</button><button type="submit">Apply</button></div>
     </form>
     <div id="detachedSelectionActions" class="detached-selection-actions" hidden><strong>Selected script</strong><button id="detachedSelectionOpenTab" type="button">Open in new tab</button></div>
+    <div id="detachedArrowAction" class="detached-arrow-action" hidden><strong id="detachedArrowActionTitle">Sequence call</strong><button id="detachedArrowActivationBtn" type="button">Activate action</button></div>
     <footer><span id="detachedStatus">Connecting…</span><span>PlantUML Studio ${APP_VERSION}</span></footer>
   </div>
 `;
@@ -48,6 +49,8 @@ let restoreBounds = null;
 let quickEditRecordId = null;
 let quickEditTimer = null;
 let quickEditPoint = null;
+let activationRecordId = null;
+let activationPoint = null;
 
 function clearSelectionOverlay() {
   els.canvas.querySelector('.detached-selection-screen-overlay')?.remove();
@@ -104,7 +107,19 @@ function closeQuickEdit() {
 }
 
 function receiveAction(message) {
-  if (!isDetachedPreviewAction(message, 'detached-preview-quick-edit-data') || message.previewId !== previewId) return;
+  if (message.previewId !== previewId) return;
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-data')) {
+    activationRecordId = message.recordId;
+    const menu = document.querySelector('#detachedArrowAction');
+    const point = activationPoint || { x: 80, y: 80 };
+    document.querySelector('#detachedArrowActionTitle').textContent = message.title || 'Sequence call';
+    document.querySelector('#detachedArrowActivationBtn').textContent = message.label || 'Activate action';
+    menu.style.left = `${Math.min(window.innerWidth - 220, Math.max(12, point.x))}px`;
+    menu.style.top = `${Math.min(window.innerHeight - 120, Math.max(60, point.y))}px`;
+    menu.hidden = false;
+    return;
+  }
+  if (!isDetachedPreviewAction(message, 'detached-preview-quick-edit-data')) return;
   quickEditRecordId = message.recordId;
   els.quickEditTitle.textContent = `Quick edit • ${message.title || 'diagram object'}`;
   els.quickEditColor.value = message.color || '';
@@ -229,6 +244,13 @@ els.canvas.addEventListener('click', event => {
   sendAction('detached-preview-navigate', { recordId: marked.dataset.sourceNavId });
   els.status.textContent = 'Opened source location in the editor window';
 });
+els.canvas.addEventListener('contextmenu', event => {
+  const marked = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
+  if (!marked) return;
+  event.preventDefault();
+  activationPoint = { x: event.clientX, y: event.clientY };
+  sendAction('detached-preview-activation-request', { recordId: marked.dataset.sourceNavId });
+});
 els.canvas.addEventListener('pointerover', event => {
   if (event.target instanceof Element && event.target.closest('.detached-selection-screen-overlay')) {
     document.querySelector('#detachedSelectionActions').hidden = false;
@@ -259,6 +281,15 @@ document.querySelector('#detachedSelectionOpenTab').addEventListener('click', ()
   sendAction('detached-preview-open-selection-tab');
   document.querySelector('#detachedSelectionActions').hidden = true;
   els.status.textContent = 'Opened selection in a new editor tab';
+});
+document.querySelector('#detachedArrowActivationBtn').addEventListener('click', () => {
+  if (activationRecordId) sendAction('detached-preview-activation-apply', { recordId: activationRecordId });
+  document.querySelector('#detachedArrowAction').hidden = true;
+  activationRecordId = null;
+  els.status.textContent = 'Activation update sent to editor';
+});
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.detached-arrow-action')) document.querySelector('#detachedArrowAction').hidden = true;
 });
 els.windowSize.addEventListener('click', toggleMaximize);
 document.querySelector('header').addEventListener('dblclick', event => {
