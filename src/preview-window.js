@@ -56,17 +56,35 @@ function clearSelectionOverlay() {
 
 function refreshSelectionOverlay() {
   clearSelectionOverlay();
-  const svgOverlay = els.canvas.querySelector('svg .source-selection-overlay');
-  if (!svgOverlay) return;
-  const bounds = svgOverlay.getBoundingClientRect();
+  const selectedIds = new Set(currentMessage?.selectionRecordIds || []);
+  if (!selectedIds.size) return;
+  const bestByRecord = new Map();
+  for (const node of els.canvas.querySelectorAll('[data-source-nav-id]')) {
+    const id = node.dataset.sourceNavId;
+    if (!selectedIds.has(id)) continue;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) continue;
+    const classes = node.getAttribute('class') || '';
+    const nativeLine = ['data-source-line', 'data-line', 'data-line-number', 'data-sourceLine'].some(name => node.hasAttribute(name));
+    const semanticGroup = node.tagName.toLowerCase() === 'g' && /message|participant|entity|class|component|actor|node|cluster|state|object|usecase|note|group|divider|delay/i.test(classes);
+    const rank = nativeLine ? 100 : semanticGroup ? 80 : node.tagName.toLowerCase() === 'text' ? 40 : 10;
+    const candidate = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, rank, area: rect.width * rect.height };
+    const current = bestByRecord.get(id);
+    if (!current || candidate.rank > current.rank || (candidate.rank === current.rank && candidate.area > current.area)) bestByRecord.set(id, candidate);
+  }
+  const bounds = [...bestByRecord.values()];
+  if (!bounds.length) return;
   const canvasBounds = els.canvas.getBoundingClientRect();
-  if (bounds.width < 1 || bounds.height < 1) return;
+  const left = Math.min(...bounds.map(item => item.left)) - 7;
+  const top = Math.min(...bounds.map(item => item.top)) - 6;
+  const right = Math.max(...bounds.map(item => item.right)) + 7;
+  const bottom = Math.max(...bounds.map(item => item.bottom)) + 6;
   const overlay = document.createElement('div');
   overlay.className = 'detached-selection-screen-overlay';
-  overlay.style.left = `${bounds.left - canvasBounds.left}px`;
-  overlay.style.top = `${bounds.top - canvasBounds.top}px`;
-  overlay.style.width = `${bounds.width}px`;
-  overlay.style.height = `${bounds.height}px`;
+  overlay.style.left = `${left - canvasBounds.left}px`;
+  overlay.style.top = `${top - canvasBounds.top}px`;
+  overlay.style.width = `${right - left}px`;
+  overlay.style.height = `${bottom - top}px`;
   overlay.addEventListener('pointerenter', () => {
     document.querySelector('#detachedSelectionActions').hidden = false;
   });

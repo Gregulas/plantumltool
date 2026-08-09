@@ -408,11 +408,18 @@ const DETACHED_PREVIEW_LEASE_MS = 1750;
 const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(DETACHED_PREVIEW_CHANNEL) : null;
 
 function currentDetachedPreviewState() {
+  const range = selectedSourceLineRange();
+  const selectionRecordIds = range && state.sourceNavigationIndex
+    ? state.sourceNavigationIndex.records
+      .filter(record => record.line >= range.startLine && record.line <= range.endLine)
+      .map(record => record.id)
+    : [];
   return detachedPreviewState({
     svg: els.previewCanvas.querySelector('svg')?.outerHTML || state.svg,
     filename: state.filename,
     dark: state.dark,
-    status: els.renderStatus?.textContent || 'Synchronized with editor'
+    status: els.renderStatus?.textContent || 'Synchronized with editor',
+    selectionRecordIds
   });
 }
 
@@ -918,6 +925,7 @@ function refreshSelectionViewer() {
   const range = selectedSourceLineRange();
   const index = state.sourceNavigationIndex;
   const svg = els.previewCanvas.querySelector('svg');
+  sendDetachedPreviewState();
   if (!range || !index || !svg) return;
   const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   layer.classList.add('source-selection-overlays');
@@ -984,7 +992,6 @@ function refreshSelectionViewer() {
   screenOverlay.style.height = `${Math.max(1, screenBottom - screenTop + 12)}px`;
   screenOverlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
   els.previewCanvas.appendChild(screenOverlay);
-  sendDetachedPreviewState();
 }
 
 function openSelectionInNewTab() {
