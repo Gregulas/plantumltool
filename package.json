@@ -7,7 +7,7 @@
   "scripts": {
     "postinstall": "node scripts/patch-plantuml-browser-limit.mjs",
     "predev": "node scripts/patch-plantuml-browser-limit.mjs",
-    "dev": "vite --host 127.0.0.1",
+    "dev": "vite --force --host 127.0.0.1",
     "prebuild": "node scripts/patch-plantuml-browser-limit.mjs",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
