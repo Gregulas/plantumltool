@@ -4,6 +4,7 @@ import vizGlobalUrl from '@plantuml/core/viz-global.js?url';
 import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
 import { analyzePlantUml, rendererDiagnostic, extractSvgRenderError } from './diagnostics.js';
+import { analyzeProseSpelling } from './spell-check.js';
 import { buildSourceNavigationIndex, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
 import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './editor-behavior.js';
 import { formatPlantUmlEdit } from './formatter.js';
@@ -325,8 +326,8 @@ app.innerHTML = `
           <div class="error-panel-heading">
             <span class="error-panel-icon" aria-hidden="true">!</span>
             <div>
-              <strong>Current script has errors</strong>
-              <span>Preview is keeping the last valid diagram.</span>
+              <strong id="errorPanelTitle">Current script has errors</strong>
+              <span id="errorPanelDescription">Preview is keeping the last valid diagram.</span>
             </div>
           </div>
           <details id="errorDetails" class="error-details">
@@ -363,6 +364,8 @@ const els = {
   errorPanel: document.querySelector('#errorPanel'),
   errorDetails: document.querySelector('#errorDetails'),
   errorText: document.querySelector('#errorText'),
+  errorPanelTitle: document.querySelector('#errorPanelTitle'),
+  errorPanelDescription: document.querySelector('#errorPanelDescription'),
   renderStatus: document.querySelector('#renderStatus'),
   navigationStatus: document.querySelector('#navigationStatus'),
   zoomResetBtn: document.querySelector('#zoomResetBtn'),
@@ -707,7 +710,7 @@ async function doRender() {
       const diagnostic = rendererDiagnostic(svgError.message, rawSource, adjustedLine);
       if (diagnostic && adjustedLine) diagnostic.line = adjustedLine;
       state.rendererDiagnostics = diagnostic ? [diagnostic] : [];
-      showError(svgError.message);
+      showError(svgError.message, diagnostic);
       keepLastValidPreview('PlantUML error');
       renderDiagnostics();
       return false;
@@ -734,7 +737,7 @@ async function doRender() {
     let diagnostic = rendererDiagnostic(message, rawSource);
     if (diagnostic?.line && normalizedAddedWrapper) diagnostic.line = Math.max(1, diagnostic.line - 1);
     state.rendererDiagnostics = diagnostic ? [diagnostic] : [];
-    showError(message);
+    showError(message, diagnostic);
     keepLastValidPreview('Render validation failed');
     renderDiagnostics();
     return false;
@@ -968,7 +971,12 @@ function fitDiagram() {
   setZoom(scale);
 }
 
-function showError(message) {
+function showError(message, diagnostic = null) {
+  const isRenderLimit = diagnostic?.source === 'render-limit';
+  els.errorPanelTitle.textContent = isRenderLimit ? 'Diagram exceeds the browser rendering limit' : 'Current script has errors';
+  els.errorPanelDescription.textContent = isRenderLimit
+    ? 'The script is valid, but the preview cannot render these dimensions. The last valid diagram is being kept.'
+    : 'Preview is keeping the last valid diagram.';
   els.errorText.textContent = message;
   els.errorDetails.open = false;
   els.errorPanel.hidden = false;
@@ -1050,7 +1058,15 @@ function renderDiagnostics() {
     els.problemsList.innerHTML = items.map(item => {
       const location = item.line ? `Line ${item.line}${item.column ? `:${item.column}` : ''}` : 'Diagram';
       const severityLabel = item.severity === 'error' ? 'Error' : item.severity === 'warning' ? 'Warning' : 'Info';
-      const sourceLabel = item.source === 'renderer' ? 'PlantUML parser' : item.source === 'semantic' ? 'Reference check' : 'Local syntax check';
+      const sourceLabel = item.source === 'spelling'
+        ? 'Spell check'
+        : item.source === 'render-limit'
+          ? 'Browser rendering limit'
+          : item.source === 'renderer'
+            ? 'PlantUML parser'
+            : item.source === 'semantic'
+              ? 'Reference check'
+              : 'Local syntax check';
       const sourceLine = item.line ? sourceLines[item.line - 1] : '';
       const detail = item.detail || item.message;
 
@@ -1088,7 +1104,8 @@ function renderDiagnostics() {
 }
 
 function runLocalDiagnostics() {
-  state.localDiagnostics = analyzePlantUml(canonicalSource());
+  const source = canonicalSource();
+  state.localDiagnostics = [...analyzePlantUml(source), ...analyzeProseSpelling(source)];
   renderDiagnostics();
 }
 

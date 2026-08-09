@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { analyzeProseSpelling, proseSegments } from '../src/spell-check-core.js';
+
+const checker = {
+  correct(word) { return !['recieve', 'aplication', 'statuz'].includes(word.toLowerCase()); },
+  suggest(word) { return ({ recieve: ['receive'], aplication: ['application'], statuz: ['status'] })[word.toLowerCase()] || []; }
+};
+
+test('checks arrow labels and note prose but not object names', () => {
+  const source = `@startuml
+participant "Recieve Portal" as RecievePortal
+RecievePortal -> LoanMS: Recieve aplication status
+note right of LoanMS
+  Check the statuz carefully
+end note
+@enduml`;
+  assert.deepEqual(proseSegments(source).map(item => item.text.trim()), ['Recieve aplication status', 'Check the statuz carefully']);
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.message), [
+    'Possible spelling mistake: “Recieve”.', 'Possible spelling mistake: “aplication”.', 'Possible spelling mistake: “statuz”.'
+  ]);
+});
+
+test('checks inline notes and creates an exact replacement fix', () => {
+  const source = '@startuml\nnote right: Fix aplication status\n@enduml';
+  const [diagnostic] = analyzeProseSpelling(source, checker);
+  assert.equal(source.slice(diagnostic.fix.start, diagnostic.fix.end), 'aplication');
+  assert.equal(diagnostic.fix.text, 'application');
+});
+
+test('ignores declarations, unlabeled arrows, and acronyms', () => {
+  const source = '@startuml\nparticipant Aplication\nAplication -> API\nAplication -> API: Send HTTP API data\n@enduml';
+  assert.deepEqual(analyzeProseSpelling(source, checker), []);
+});
