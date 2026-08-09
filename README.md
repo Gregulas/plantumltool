@@ -22,6 +22,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - One-click PlantUML script formatting with nested block indentation
 - Context suggestions for participant/class/component aliases declared in the current diagram
 - Live syntax diagnostics with line-specific errors and warnings while you type
+- English spell checking for displayed arrow labels and note text, excluding object names and aliases
 - Semantic reference warnings for duplicate declarations and references used without a definition
 - PlantUML parser errors and browser rendering limits are identified separately in the Problems panel
 - Expanded local renderer capacity supports diagrams up to 16,384 pixels in either dimension

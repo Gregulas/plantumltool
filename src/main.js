@@ -4,6 +4,7 @@ import vizGlobalUrl from '@plantuml/core/viz-global.js?url';
 import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
 import { analyzePlantUml, rendererDiagnostic, extractSvgRenderError } from './diagnostics.js';
+import { analyzeProseSpelling } from './spell-check.js';
 import { buildSourceNavigationIndex, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
 import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './editor-behavior.js';
 import { formatPlantUmlEdit } from './formatter.js';
@@ -1057,13 +1058,15 @@ function renderDiagnostics() {
     els.problemsList.innerHTML = items.map(item => {
       const location = item.line ? `Line ${item.line}${item.column ? `:${item.column}` : ''}` : 'Diagram';
       const severityLabel = item.severity === 'error' ? 'Error' : item.severity === 'warning' ? 'Warning' : 'Info';
-      const sourceLabel = item.source === 'render-limit'
-        ? 'Browser rendering limit'
-        : item.source === 'renderer'
-          ? 'PlantUML parser'
-          : item.source === 'semantic'
-            ? 'Reference check'
-            : 'Local syntax check';
+      const sourceLabel = item.source === 'spelling'
+        ? 'Spell check'
+        : item.source === 'render-limit'
+          ? 'Browser rendering limit'
+          : item.source === 'renderer'
+            ? 'PlantUML parser'
+            : item.source === 'semantic'
+              ? 'Reference check'
+              : 'Local syntax check';
       const sourceLine = item.line ? sourceLines[item.line - 1] : '';
       const detail = item.detail || item.message;
 
@@ -1101,7 +1104,8 @@ function renderDiagnostics() {
 }
 
 function runLocalDiagnostics() {
-  state.localDiagnostics = analyzePlantUml(canonicalSource());
+  const source = canonicalSource();
+  state.localDiagnostics = [...analyzePlantUml(source), ...analyzeProseSpelling(source)];
   renderDiagnostics();
 }
 
