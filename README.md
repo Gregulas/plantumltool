@@ -6,6 +6,13 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 
 - Side-by-side PlantUML source editor and SVG preview with a draggable divider
 - Detachable live preview window that can be moved to a second monitor while the editor stays on the primary display
+- Detached diagrams retain click-to-source navigation and object appearance quick editing
+- Async sequence arrows such as `->>`, `-->>`, and `<<--` retain exact source navigation in embedded and detached previews
+- Decorated async arrows such as `-->>o` and `o<<--` are parsed without treating endpoint decorations as object references
+- Repeated sequence dividers, delay separators, and named `newpage` boundaries retain their source order and exact navigation lines
+- Bold and formatted text in notes and separators retains click-to-source navigation in embedded and detached previews
+- Inline and multiline note text navigates back to its exact source line in embedded and detached previews
+- Diagram-to-source navigation covers all 32 supported object declarations, including ArchiMate and state start/end objects
 - Editor-only main layout while detached; closing the preview restores the split view with the embedded diagram fitted
 - Resizable detached preview with Maximize/Restore button, header double-click, and `Ctrl/Cmd + Shift + M`
 - OS-aware shortcut labels: macOS shows Cmd/Option while Windows and Linux show Ctrl/Alt
@@ -15,14 +22,14 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Last-known-good preview: invalid edits never replace the most recent valid diagram
 - PlantUML-aware autocomplete for directives, elements, arrows, control blocks, styles, and snippets
 - PlantUML syntax highlighting for object types, references, arrows, strings, comments, colors, directives, and block keywords
-- Inline color picker: click or move the caret onto a PlantUML color token to open a compact visual selector and swatch palette
+- Inline color picker: click or move the caret onto a PlantUML color token to open a compact visual selector, reliable system picker, and swatch palette
 - Type-based object colors: all objects of the same PlantUML type share the same color throughout the script
 - Prose stays neutral: note bodies and relationship/message text after `:` are intentionally not syntax-colored
 - Collapsible PlantUML blocks with gutter controls plus Fold all / Unfold all actions
 - One-click PlantUML script formatting with nested block indentation
 - Context suggestions for participant/class/component aliases declared in the current diagram
 - Live syntax diagnostics with line-specific errors and warnings while you type
-- English spell checking for displayed arrow labels and note text, excluding object names and aliases
+- English spell checking for displayed arrow labels and note text, excluding object names and aliases, with Ignore and per-diagram Ignore all actions
 - Semantic reference warnings for duplicate declarations and references used without a definition
 - PlantUML parser errors and browser rendering limits are identified separately in the Problems panel
 - Expanded local renderer capacity supports diagrams up to 16,384 pixels in either dimension

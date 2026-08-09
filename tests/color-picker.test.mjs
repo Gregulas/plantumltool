@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findColorTokenAt, normalizeColorForPicker } from '../src/color-picker.js';
+import { findColorTokenAt, normalizeColorForPicker, openNativeColorPicker } from '../src/color-picker.js';
 
 test('finds an actual PlantUML hex color at the caret', () => {
   const source = 'skinparam sequence {\n  ArrowColor #32BCBB\n}';
@@ -33,4 +33,15 @@ test('does not treat color-like text inside note bodies as editable syntax color
 test('normalizes short and alpha hex colors for the native picker', () => {
   assert.equal(normalizeColorForPicker('#abc'), '#aabbcc');
   assert.equal(normalizeColorForPicker('#abcdef80'), '#abcdef');
+});
+
+test('opens the native picker explicitly and falls back to click', () => {
+  let shown = 0;
+  let clicked = 0;
+  assert.equal(openNativeColorPicker({ showPicker() { shown += 1; }, click() { clicked += 1; } }), 'showPicker');
+  assert.equal(shown, 1);
+  assert.equal(clicked, 0);
+
+  assert.equal(openNativeColorPicker({ showPicker() { throw new Error('unsupported'); }, click() { clicked += 1; } }), 'click');
+  assert.equal(clicked, 1);
 });

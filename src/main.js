@@ -5,7 +5,7 @@ import { renderToString } from '@plantuml/core/plantuml.js';
 import { createAutocomplete } from './autocomplete.js';
 import { analyzePlantUml, rendererDiagnostic, extractSvgRenderError } from './diagnostics.js';
 import { analyzeProseSpelling } from './spell-check.js';
-import { buildSourceNavigationIndex, findTextNavigationTarget, plantUmlSvgLineToSourceLine, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
+import { buildSourceNavigationIndex, canonicalNavigationText, findTextNavigationTarget, plantUmlSvgLineToSourceLine, registerNavigationRecord, relocateNavigationTarget, resolveNavigationTarget } from './source-navigation.js';
 import { captureEditorView, indentedNewlineEdit, restoreEditorView } from './editor-behavior.js';
 import { formatPlantUmlEdit } from './formatter.js';
 import { highlightPlantUml } from './syntax-highlight.js';
@@ -16,7 +16,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
-import { DETACHED_PREVIEW_CHANNEL, detachedPreviewState, isDetachedPreviewLifecycle } from './detached-preview.js';
+import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 
 const DEFAULT_SOURCE = `@startuml
@@ -159,6 +159,8 @@ const state = {
   rendering: false,
   renderSeq: 0,
   localDiagnostics: [],
+  ignoredSpellingOccurrences: new Set(),
+  ignoredSpellingWords: new Set(),
   rendererDiagnostics: [],
   lastSuccessfulSource: '',
   workspaceSplit: Number(localStorage.getItem('plantuml-workspace-split')) || 48,
@@ -397,11 +399,16 @@ const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new Broa
 
 function currentDetachedPreviewState() {
   return detachedPreviewState({
-    svg: state.svg,
+    svg: els.previewCanvas.querySelector('svg')?.outerHTML || state.svg,
     filename: state.filename,
     dark: state.dark,
     status: els.renderStatus?.textContent || 'Synchronized with editor'
   });
+}
+
+function sendDetachedPreviewMessage(message, target = null) {
+  detachedPreviewChannel?.postMessage(message);
+  if (target && !target.closed) target.postMessage(message, location.origin);
 }
 
 function sendDetachedPreviewState(target = detachedPreviewWindow) {
@@ -466,6 +473,32 @@ function handleDetachedPreviewLifecycle(message, target = null) {
   }
 }
 
+function handleDetachedPreviewAction(message, target = null) {
+  if (isDetachedPreviewAction(message, 'detached-preview-navigate')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) navigateToDiagramRecord(record);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-request')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (!record || record.type !== 'element') return;
+    const current = relocateNavigationTarget(record, canonicalSource()) || record;
+    const line = splitLines(canonicalSource())[current.line - 1] || current.statement || '';
+    const appearance = readObjectAppearance(line);
+    sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-quick-edit-data', message.previewId, {
+      recordId: record.id,
+      title: describeNavigationRecord(current),
+      color: appearance.color,
+      style: appearance.style
+    }), target);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-apply')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) applyAppearanceToRecord(record, { color: message.color, style: message.style });
+  }
+}
+
 setInterval(() => {
   const expiredBefore = Date.now() - DETACHED_PREVIEW_LEASE_MS;
   for (const [previewId, lastSeen] of detachedPreviewLastSeen) {
@@ -491,9 +524,13 @@ function openDetachedPreview() {
 
 detachedPreviewChannel?.addEventListener('message', event => {
   handleDetachedPreviewLifecycle(event.data);
+  handleDetachedPreviewAction(event.data);
 });
 window.addEventListener('message', event => {
-  if (event.origin === location.origin) handleDetachedPreviewLifecycle(event.data, event.source);
+  if (event.origin === location.origin) {
+    handleDetachedPreviewLifecycle(event.data, event.source);
+    handleDetachedPreviewAction(event.data, event.source);
+  }
 });
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
@@ -823,9 +860,40 @@ function svgNavigationDescriptor(element) {
 
 function markSvgNavigationNode(node, record) {
   if (!node || !record) return;
+  registerNavigationRecord(state.sourceNavigationIndex, record);
   node.dataset.sourceNavId = record.id;
   node.classList.add('source-navigable');
   node.setAttribute('aria-label', `Go to PlantUML source line ${record.line}`);
+}
+
+function decorateSequenceSeparatorNavigation(svg, index) {
+  const queues = new Map();
+  for (const record of index.records.filter(item => item.type === 'divider' || item.type === 'delay')) {
+    const key = `${record.type}:${canonicalNavigationText(record.label)}`;
+    if (!queues.has(key)) queues.set(key, []);
+    queues.get(key).push(record);
+  }
+
+  const occurrences = new Map();
+  for (const text of svg.querySelectorAll('text')) {
+    const label = canonicalNavigationText(text.textContent);
+    if (!label) continue;
+    const fontWeight = String(text.getAttribute('font-weight') || '').toLowerCase();
+    const fontSize = Number.parseFloat(text.getAttribute('font-size') || '');
+    const type = fontWeight === 'bold' || Number(fontWeight) >= 600
+      ? 'divider'
+      : Number.isFinite(fontSize) && fontSize <= 11
+        ? 'delay'
+        : null;
+    if (!type) continue;
+    const key = `${type}:${label}`;
+    const records = queues.get(key);
+    if (!records?.length) continue;
+    const occurrence = occurrences.get(key) || 0;
+    const record = records[Math.min(occurrence, records.length - 1)];
+    occurrences.set(key, occurrence + 1);
+    markSvgNavigationNode(text, record);
+  }
 }
 
 function decorateSvgNavigation(svg) {
@@ -863,6 +931,11 @@ function decorateSvgNavigation(svg) {
       || findTextNavigationTarget(index.source, [descriptor.clickedText]);
     if (record) markSvgNavigationNode(text, record);
   }
+
+
+  // PlantUML does not emit source metadata for dividers and delays. Repeated
+  // labels must therefore be paired with source records in visual order.
+  decorateSequenceSeparatorNavigation(svg, index);
 }
 
 function renderedNavigationRecordFromEvent(event) {
@@ -898,13 +971,8 @@ function describeNavigationRecord(record) {
   return readableDiagramLabel(record.label || record.reference || record.message || record.kind) || 'diagram element';
 }
 
-function navigateFromDiagram(event) {
-  const renderedRecord = renderedNavigationRecordFromEvent(event);
+function navigateToDiagramRecord(renderedRecord) {
   if (!renderedRecord) return false;
-
-  event.preventDefault();
-  event.stopPropagation();
-
   const currentRecord = relocateNavigationTarget(renderedRecord, canonicalSource());
   if (currentRecord) {
     jumpToLine(currentRecord.line, 1, { selectLine: true });
@@ -920,6 +988,14 @@ function navigateFromDiagram(event) {
   els.navigationStatus.textContent = `${describeNavigationRecord(renderedRecord)} • last rendered line ${renderedRecord.line}`;
   els.navigationStatus.classList.add('navigation-stale');
   return true;
+}
+
+function navigateFromDiagram(event) {
+  const renderedRecord = renderedNavigationRecordFromEvent(event);
+  if (!renderedRecord) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  return navigateToDiagramRecord(renderedRecord);
 }
 
 function applyZoom() {
@@ -1081,7 +1157,11 @@ function renderDiagnostics() {
                 ${item.suggestion ? `<small><b>Suggestion:</b> ${escapeHtml(item.suggestion)}</small>` : ''}
               </span>
             </button>
-            ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ ${escapeHtml(item.fix.label)}</button>` : ''}
+            ${(item.fix || item.source === 'spelling') ? `<div class="diagnostic-actions">
+              ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ ${escapeHtml(item.fix.label)}</button>` : ''}
+              ${item.source === 'spelling' ? `<button class="diagnostic-ignore" type="button" data-action="ignore-spelling" data-id="${escapeHtml(item.id)}">Ignore</button>
+              <button class="diagnostic-ignore" type="button" data-action="ignore-all-spelling" data-id="${escapeHtml(item.id)}">Ignore all</button>` : ''}
+            </div>` : ''}
           </div>
           <details class="diagnostic-details">
             <summary><span class="details-closed">Show details</span><span class="details-open">Hide details</span></summary>
@@ -1105,8 +1185,22 @@ function renderDiagnostics() {
 
 function runLocalDiagnostics() {
   const source = canonicalSource();
-  state.localDiagnostics = [...analyzePlantUml(source), ...analyzeProseSpelling(source)];
+  const spelling = analyzeProseSpelling(source).filter(item => {
+    const word = item.word?.toLowerCase();
+    return !state.ignoredSpellingOccurrences.has(item.ignoreKey) && !state.ignoredSpellingWords.has(word);
+  });
+  state.localDiagnostics = [...analyzePlantUml(source), ...spelling];
   renderDiagnostics();
+}
+
+function ignoreSpellingDiagnostic(item, allOccurrences = false) {
+  if (item?.source !== 'spelling' || !item.word) return;
+  if (allOccurrences) state.ignoredSpellingWords.add(item.word.toLowerCase());
+  else if (item.ignoreKey) state.ignoredSpellingOccurrences.add(item.ignoreKey);
+  runLocalDiagnostics();
+  els.renderStatus.textContent = allOccurrences
+    ? `Ignored all occurrences of “${item.word}” in this diagram`
+    : `Ignored this occurrence of “${item.word}”`;
 }
 
 function updateSyntaxHighlight() {
@@ -1381,6 +1475,8 @@ const colorPicker = createColorPicker({
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
   colorPicker.close();
+  state.ignoredSpellingOccurrences.clear();
+  state.ignoredSpellingWords.clear();
   state.source = source;
   state.foldedStarts.clear();
   state.foldProjection = buildFoldProjection(source, state.foldedStarts);
@@ -1541,6 +1637,8 @@ els.problemsList.addEventListener('click', event => {
     applyDiagnosticFix(item);
     return;
   }
+  if (control.dataset.action === 'ignore-spelling') return ignoreSpellingDiagnostic(item);
+  if (control.dataset.action === 'ignore-all-spelling') return ignoreSpellingDiagnostic(item, true);
   if (control.dataset.action === 'jump') jumpToLine(item.line, item.column);
 });
 
@@ -1761,15 +1859,14 @@ function scheduleObjectQuickEdit(event, record) {
   quickEditTimer = setTimeout(() => showObjectQuickEdit(point, record), 450);
 }
 
-els.objectQuickEdit.addEventListener('submit', event => {
-  event.preventDefault();
-  if (!quickEditRecord) return;
-  const current = relocateNavigationTarget(quickEditRecord, canonicalSource()) || quickEditRecord;
+function applyAppearanceToRecord(record, appearance) {
+  if (!record) return false;
+  const current = relocateNavigationTarget(record, canonicalSource()) || record;
   const updated = updateObjectAppearance(canonicalSource(), current.line, {
-    color: els.quickEditColor.value,
-    style: els.quickEditStyle.value
+    color: appearance.color,
+    style: appearance.style
   });
-  if (updated === canonicalSource()) return closeObjectQuickEdit();
+  if (updated === canonicalSource()) return false;
   editHistory.checkpoint();
   unfoldAllPreserveCaret();
   els.editor.value = updated;
@@ -1780,6 +1877,12 @@ els.objectQuickEdit.addEventListener('submit', event => {
   updateEditorMeta();
   scheduleRender();
   els.renderStatus.textContent = 'Object appearance updated';
+  return true;
+}
+
+els.objectQuickEdit.addEventListener('submit', event => {
+  event.preventDefault();
+  applyAppearanceToRecord(quickEditRecord, { color: els.quickEditColor.value, style: els.quickEditStyle.value });
   closeObjectQuickEdit();
 });
 

@@ -19,6 +19,13 @@ end note
   assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.message), [
     'Possible spelling mistake: “Recieve”.', 'Possible spelling mistake: “aplication”.', 'Possible spelling mistake: “statuz”.'
   ]);
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.ignoreKey), ['recieve:1', 'aplication:1', 'statuz:1']);
+});
+
+test('numbers repeated misspellings for stable single-occurrence ignoring', () => {
+  const diagnostics = analyzeProseSpelling('@startuml\nA -> B: aplication\nB -> A: aplication\n@enduml', checker);
+  assert.deepEqual(diagnostics.map(item => item.ignoreKey), ['aplication:1', 'aplication:2']);
+  assert.ok(diagnostics.every(item => item.word === 'aplication'));
 });
 
 test('checks inline notes and creates an exact replacement fix', () => {
@@ -31,4 +38,14 @@ test('checks inline notes and creates an exact replacement fix', () => {
 test('ignores declarations, unlabeled arrows, and acronyms', () => {
   const source = '@startuml\nparticipant Aplication\nAplication -> API\nAplication -> API: Send HTTP API data\n@enduml';
   assert.deepEqual(analyzeProseSpelling(source, checker), []);
+});
+
+test('checks text displayed on asynchronous arrows', () => {
+  const source = '@startuml\nA ->> B: aplication queued\nB -->> A: statuz received\n@enduml';
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
+});
+
+test('checks text on asynchronous arrows with endpoint decorations', () => {
+  const source = '@startuml\nA -->>o B: aplication queued\nB o<<-- A: statuz received\n@enduml';
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
 });

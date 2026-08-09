@@ -47,6 +47,10 @@ export function plantUmlSvgLineToSourceLine(value, wrapperLineOffset = 0) {
 export function canonicalNavigationText(value) {
   return String(value ?? '')
     .replace(/\\n/g, ' ')
+    .replace(/<\/?(?:b|i|u|s|strike|wavy|color|size|font|back(?:ground)?)(?:=[^>]*)?>/gi, '')
+    .replace(/\*\*(.*?)\*\*/gs, '$1')
+    .replace(/__(.*?)__/gs, '$1')
+    .replace(/~~(.*?)~~/gs, '$1')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
@@ -54,6 +58,12 @@ export function canonicalNavigationText(value) {
     .replace(/["'`]/g, '')
     .toLowerCase()
     .trim();
+}
+
+export function registerNavigationRecord(index, record) {
+  if (!index?.byId || !record?.id) return false;
+  if (!index.byId.has(record.id)) index.byId.set(record.id, record);
+  return true;
 }
 
 function cleanDisplay(value) {
@@ -71,6 +81,7 @@ function parseDeclaration(trimmed) {
 
   const kind = match[1].toLowerCase();
   let rest = stripStereotypes(match[2] || '');
+  if (kind === 'archimate') rest = rest.replace(/^#[A-Za-z][\w-]*\s+/, '').trim();
   if (!rest || rest.startsWith('{')) return null;
   rest = rest.replace(/\s+#(?:[A-Za-z]+|[0-9A-Fa-f]{3,8})\b.*$/, '').trim();
   rest = rest.replace(/\s+order\s+\d+\b.*$/i, '').trim();
@@ -106,6 +117,8 @@ function referenceTokenAtEnd(text) {
   if (multiplicity) value = multiplicity[1].trim();
   const quoted = value.match(/"([^"]+)"\s*$/);
   if (quoted) return quoted[1];
+  const special = value.match(/\[\*\]\s*$/);
+  if (special) return '[*]';
   const bracketed = value.match(/\[([^\]]+)\]\s*$/);
   if (bracketed) return bracketed[1];
   const plain = value.match(/([A-Za-z_$][\w$.-]*|\[\*\])\s*$/);
@@ -117,10 +130,10 @@ function referenceTokenAtStart(text) {
   value = value.replace(/^"(?:\d+|[\d.*]+|\d+\.\.\*|\*|\d+\.\.\d+)"\s*/, '').trim();
   const quoted = value.match(/^"([^"]+)"/);
   if (quoted) return quoted[1];
-  const bracketed = value.match(/^\[([^\]]+)\]/);
-  if (bracketed) return bracketed[1];
   const special = value.match(/^\[\*\]/);
   if (special) return '[*]';
+  const bracketed = value.match(/^\[([^\]]+)\]/);
+  if (bracketed) return bracketed[1];
   const plain = value.match(/^([A-Za-z_$][\w$.-]*)/);
   return plain ? plain[1] : '';
 }
@@ -128,7 +141,7 @@ function referenceTokenAtStart(text) {
 function parseRelationship(trimmed) {
   if (/^(?::|note\b|legend\b|title\b|caption\b|header\b|footer\b|skinparam\b|!|@)/i.test(trimmed)) return null;
   // Relationship operators across sequence, class, component, state and deployment diagrams.
-  const arrow = trimmed.match(/(?:<[-.=o*x|{}]+>|[-.=o*x|{}]+>|<[-.=o*x|{}]+|--|\.\.)/);
+  const arrow = trimmed.match(/(?:[o*x]?<{1,2}[-.=o*x|{}]+>{1,2}[o*x]?|[-.=o*x|{}]+>{1,2}[o*x]?|[o*x]?<{1,2}[-.=o*x|{}]+|--|\.\.)/);
   if (!arrow) return null;
   const left = trimmed.slice(0, arrow.index);
   const right = trimmed.slice(arrow.index + arrow[0].length);
@@ -182,12 +195,37 @@ export function buildSourceNavigationIndex(source) {
   const declarations = new Map();
   let sequence = 0;
   let activeContainer = null;
+  let activeNote = false;
 
   lines.forEach((raw, index) => {
     const line = index + 1;
     const code = withoutComment(raw);
     const trimmed = code.trim();
+
+    if (activeNote) {
+      const noteText = raw.trim();
+      if (/^(?:end\s+note|endnote)\b/i.test(noteText)) {
+        activeNote = false;
+        return;
+      }
+      if (noteText) {
+        records.push(makeRecord({
+          type: 'note',
+          kind: 'note',
+          label: noteText,
+          line,
+          statement: raw
+        }, ++sequence));
+      }
+      return;
+    }
+
     if (!trimmed) return;
+
+    if (/^(?:note|hnote|rnote)\b/i.test(trimmed) && !/:\s*\S/.test(trimmed)) {
+      activeNote = true;
+      return;
+    }
 
     const declaration = parseDeclaration(trimmed);
     if (declaration) {
@@ -256,12 +294,36 @@ export function buildSourceNavigationIndex(source) {
       return;
     }
 
-    const note = trimmed.match(/^note\b.*?:\s*(.+)$/i);
+    const note = trimmed.match(/^(?:note|hnote|rnote)\b.*?:\s*(.+)$/i);
     if (note) {
       records.push(makeRecord({
         type: 'note',
         kind: 'note',
         label: note[1].trim(),
+        line,
+        statement: raw
+      }, ++sequence));
+      return;
+    }
+
+    const delay = trimmed.match(/^\.\.\.\s*(.*?)\s*\.\.\.$/);
+    if (delay) {
+      records.push(makeRecord({
+        type: 'delay',
+        kind: 'sequence-delay',
+        label: delay[1].trim(),
+        line,
+        statement: raw
+      }, ++sequence));
+      return;
+    }
+
+    const pageSeparator = trimmed.match(/^newpage(?:\s+(.+))?$/i);
+    if (pageSeparator) {
+      records.push(makeRecord({
+        type: 'page-separator',
+        kind: 'sequence-page-separator',
+        label: pageSeparator[1]?.trim() || 'newpage',
         line,
         statement: raw
       }, ++sequence));
@@ -381,7 +443,8 @@ export function resolveNavigationTarget(index, descriptor = {}) {
     }
 
     if (record.type === 'member' && clickedText && canonicalNavigationText(record.memberLabel) === clickedText) score += 220;
-    if (record.type === 'divider' && clickedText && canonicalNavigationText(record.label) === clickedText) score += 260;
+    if (['divider', 'delay', 'page-separator'].includes(record.type)
+      && clickedText && canonicalNavigationText(record.label) === clickedText) score += 260;
 
     if (score > bestScore) {
       bestScore = score;

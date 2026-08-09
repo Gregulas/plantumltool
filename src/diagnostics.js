@@ -423,6 +423,7 @@ const SPECIAL_REFERENCES = new Set([
 function normalizeReference(value) {
   const ref = String(value ?? '').trim();
   if (!ref) return '';
+  if (ref === '[*]') return ref;
   if ((ref.startsWith('"') && ref.endsWith('"')) || (ref.startsWith('[') && ref.endsWith(']'))) {
     return ref.slice(1, -1).trim();
   }
@@ -438,7 +439,9 @@ function parseDeclaredReference(trimmed) {
   const match = trimmed.match(new RegExp(`^(?:abstract\\s+)?(${keywordPattern})\\b\\s*(.*)$`, 'i'));
   if (!match) return null;
 
+  const kind = match[1].toLowerCase();
   let rest = stripStereotypes(match[2] || '');
+  if (kind === 'archimate') rest = rest.replace(/^#[A-Za-z][\w-]*\s+/, '').trim();
   if (!rest || rest.startsWith('{')) return null;
 
   const aliasMatch = rest.match(/\bas\s+([A-Za-z_$][\w$.-]*)\b/i);
@@ -446,18 +449,18 @@ function parseDeclaredReference(trimmed) {
     return {
       reference: aliasMatch[1],
       displayName: rest.replace(/\bas\s+[A-Za-z_$][\w$.-]*\b.*$/i, '').trim(),
-      kind: match[1].toLowerCase()
+      kind
     };
   }
 
   const quoted = rest.match(/^"([^"]+)"/);
-  if (quoted) return { reference: quoted[1], displayName: quoted[1], kind: match[1].toLowerCase() };
+  if (quoted) return { reference: quoted[1], displayName: quoted[1], kind };
 
   const bracketed = rest.match(/^\[([^\]]+)\]/);
-  if (bracketed) return { reference: bracketed[1], displayName: bracketed[1], kind: match[1].toLowerCase() };
+  if (bracketed) return { reference: bracketed[1], displayName: bracketed[1], kind };
 
   const plain = rest.match(/^([A-Za-z_$][\w$.-]*)/);
-  if (plain) return { reference: plain[1], displayName: plain[1], kind: match[1].toLowerCase() };
+  if (plain) return { reference: plain[1], displayName: plain[1], kind };
 
   return null;
 }
@@ -469,6 +472,8 @@ function referenceTokenAtEnd(text) {
 
   const quoted = value.match(/"([^"]+)"\s*$/);
   if (quoted) return quoted[1];
+  const special = value.match(/\[\*\]\s*$/);
+  if (special) return '[*]';
   const bracketed = value.match(/\[([^\]]+)\]\s*$/);
   if (bracketed) return bracketed[1];
   const plain = value.match(/([A-Za-z_$][\w$.-]*)\s*$/);
@@ -482,6 +487,8 @@ function referenceTokenAtStart(text) {
 
   const quoted = value.match(/^"([^"]+)"/);
   if (quoted) return quoted[1];
+  const special = value.match(/^\[\*\]/);
+  if (special) return '[*]';
   const bracketed = value.match(/^\[([^\]]+)\]/);
   if (bracketed) return bracketed[1];
   const plain = value.match(/^([A-Za-z_$][\w$.-]*)/);
@@ -492,7 +499,7 @@ function relationshipReferences(trimmed) {
   // Avoid treating arrows embedded in activity text, notes, titles, or styling as element relationships.
   if (/^(?::|note\b|legend\b|title\b|caption\b|header\b|footer\b|skinparam\b)/i.test(trimmed)) return [];
   // Covers common sequence, class, component, deployment and state arrows.
-  const arrow = trimmed.match(/(?:<[-.=o*|]+>|[-.=o*|]+>|<[-.=o*|]+|--|\.\.)/);
+  const arrow = trimmed.match(/(?:[o*x]?<{1,2}[-.=o*x|{}]+>{1,2}[o*x]?|[-.=o*x|{}]+>{1,2}[o*x]?|[o*x]?<{1,2}[-.=o*x|{}]+|--|\.\.)/);
   if (!arrow) return [];
 
   const left = trimmed.slice(0, arrow.index);

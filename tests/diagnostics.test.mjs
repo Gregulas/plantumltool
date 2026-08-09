@@ -116,6 +116,24 @@ stop
   assert.equal(diagnostics.filter(item => item.source === 'semantic').length, 0);
 });
 
+test('accepts state pseudo-objects and ArchiMate declarations as valid references', () => {
+  const stateDiagnostics = analyzePlantUml('@startuml\nstate Ready\n[*] --> Ready\nReady --> [*]\n@enduml');
+  assert.equal(stateDiagnostics.filter(item => item.source === 'semantic').length, 0);
+
+  const archimateDiagnostics = analyzePlantUml('@startuml\narchimate #Technology "Architecture Service" as Service\nService --> Service\n@enduml');
+  assert.equal(archimateDiagnostics.filter(item => item.source === 'semantic').length, 0);
+});
+
+test('does not treat asynchronous arrow endpoint decorations as references', () => {
+  const source = `@startuml
+participant Portal
+participant API
+Portal -->>o API: Queued request
+API o<<-- Portal: Callback response
+@enduml`;
+  assert.equal(analyzePlantUml(source).filter(item => item.source === 'semantic').length, 0);
+});
+
 
 test('unmatched standalone end is a blocking error, not a warning', () => {
   const source = `@startuml
