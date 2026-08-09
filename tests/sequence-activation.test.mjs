@@ -47,3 +47,26 @@ test('deactivation selected on a return only deactivates at that return', () => 
   assert.equal(action.label, 'Deactivate until this return');
   assert.match(applySequenceActivation(activated, action), /B --> A: done\ndeactivate B/);
 });
+
+test('asynchronous arrows activate only their direct target', () => {
+  for (const arrow of ['-->>', '-->>o']) {
+    const asyncSource = `@startuml\nparticipant A\nparticipant B\nparticipant C\nA ${arrow} B: async\nB -> C: later\nC --> B: return\n@enduml`;
+    const index = buildSourceNavigationIndex(asyncSource);
+    const selected = index.records.find(record => record.message === 'async');
+    const action = sequenceActivationAction(asyncSource, index, selected);
+    assert.deepEqual(action.events.map(({ command, actor }) => [command, actor]), [['activate', 'B']]);
+    const updated = applySequenceActivation(asyncSource, action);
+    assert.match(updated, new RegExp(`A ${arrow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} B: async\\nactivate B`));
+    assert.doesNotMatch(updated, /activate C/);
+  }
+});
+
+test('a synchronous call does not treat a nested async arrow as a return', () => {
+  const mixed = `@startuml\nparticipant A\nparticipant B\nparticipant C\nA -> B: start\nB -->>o C: notify\nB --> A: done\n@enduml`;
+  const index = buildSourceNavigationIndex(mixed);
+  const selected = index.records.find(record => record.message === 'start');
+  const events = sequenceActivationAction(mixed, index, selected).events;
+  assert.deepEqual(events.map(({ command, actor }) => [command, actor]), [
+    ['activate', 'B'], ['activate', 'C'], ['deactivate', 'B']
+  ]);
+});

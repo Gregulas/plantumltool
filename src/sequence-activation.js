@@ -26,8 +26,11 @@ function activationDepth(lines, throughIndex, actor) {
   return Math.max(0, depth);
 }
 
-function isReturn(record) {
-  return /(?:--|\.\.)/.test(record.arrow || '');
+function arrowKind(record) {
+  const arrow = record.arrow || '';
+  if (arrow.includes('>>')) return 'async';
+  if (/(?:--|\.\.)/.test(arrow)) return 'return';
+  return 'call';
 }
 
 function scopedCalls(records, selected) {
@@ -39,12 +42,17 @@ function scopedCalls(records, selected) {
     const record = records[i];
     const top = stack.at(-1);
     const caller = stack.at(-2);
-    if (!isReturn(record) && record.source === top) {
+    const kind = arrowKind(record);
+    if (kind === 'async' && record.source === top) {
+      events.push({ command: 'activate', actor: record.target, line: record.line });
+      continue;
+    }
+    if (kind === 'call' && record.source === top) {
       stack.push(record.target);
       events.push({ command: 'activate', actor: record.target, line: record.line });
       continue;
     }
-    if (isReturn(record) && record.source === top && record.target === caller) {
+    if (kind === 'return' && record.source === top && record.target === caller) {
       events.push({ command: 'deactivate', actor: record.source, line: record.line });
       stack.pop();
       if (stack.length === 1) break;
@@ -59,13 +67,24 @@ export function sequenceActivationAction(source, index, selectedRecord) {
   const relationships = index.records.filter(record => record.type === 'relationship');
   const lineIndex = selectedRecord.line - 1;
 
-  if (isReturn(selectedRecord)) {
+  const selectedKind = arrowKind(selectedRecord);
+  if (selectedKind === 'return') {
     const active = activationDepth(lines, lineIndex, selectedRecord.source) > 0;
     return {
       mode: active ? 'deactivate-return' : 'activate-return',
       label: active ? 'Deactivate until this return' : 'Activate action',
       actor: selectedRecord.source,
       line: selectedRecord.line
+    };
+  }
+
+  if (selectedKind === 'async') {
+    const existingLine = matchingDirective(lines, lineIndex, 'activate', selectedRecord.target);
+    return {
+      mode: existingLine >= 0 ? 'deactivate-scope' : 'activate-scope',
+      label: existingLine >= 0 ? 'Deactivate action' : 'Activate action',
+      events: [{ command: 'activate', actor: selectedRecord.target, line: selectedRecord.line }],
+      existingLines: [existingLine]
     };
   }
 
