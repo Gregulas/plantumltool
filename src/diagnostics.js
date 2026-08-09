@@ -634,7 +634,7 @@ export function rendererDiagnostic(message, source, fallbackLine = null) {
 
   const isRenderLimit = /diagram too large for browser rendering/i.test(text);
   let suggestion = 'Review the reported line and the line immediately before it; PlantUML parser errors are often caused by an unclosed block, quote, or malformed relationship.';
-  if (isRenderLimit) suggestion = 'Reduce the diagram dimensions, split it into smaller diagrams, or add a PlantUML scale directive such as "scale max 4000 height" near the start of the script.';
+  if (isRenderLimit) suggestion = 'This diagram exceeds the expanded local rendering capacity. Split it into smaller diagrams or use PlantUML newpage sections.';
   if (/syntax error/i.test(text)) suggestion = 'Check the reported line for a misspelled keyword, malformed arrow, missing block terminator, or unclosed quote.';
   if (/cannot|unknown|not found/i.test(text)) suggestion = 'Check the referenced name, include, directive, or keyword spelling.';
 

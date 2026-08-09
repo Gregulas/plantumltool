@@ -63,7 +63,7 @@ test('classifies browser diagram size limits as rendering capacity errors', () =
   assert.equal(diagnostic.source, 'render-limit');
   assert.equal(diagnostic.line, null);
   assert.equal(diagnostic.message, 'Diagram is too large for browser rendering (1348 × 4132; maximum dimension 4096).');
-  assert.match(diagnostic.suggestion, /scale max 4000 height/);
+  assert.match(diagnostic.suggestion, /split it into smaller diagrams/i);
   assert.equal(diagnostic.detail, raw);
 });
 

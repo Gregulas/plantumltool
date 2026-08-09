@@ -24,6 +24,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Live syntax diagnostics with line-specific errors and warnings while you type
 - Semantic reference warnings for duplicate declarations and references used without a definition
 - PlantUML parser errors and browser rendering limits are identified separately in the Problems panel
+- Expanded local renderer capacity supports diagrams up to 16,384 pixels in either dimension
 - Suggested fixes for common mistakes, with one-click quick fixes when the correction is deterministic
 - Error/warning markers beside affected line numbers and click-to-jump navigation
 - Fully local rendering after dependencies are installed
