@@ -14,7 +14,7 @@ function commentIndex(line) {
 function arrowMessageStart(line) {
   const code = line.slice(0, commentIndex(line));
   if (/^\s*(?:note|legend|title|caption|header|footer|skinparam)\b/i.test(code)) return -1;
-  const arrow = code.match(/(?:<[-.=o*|]+>|[-.=o*|]+>|<[-.=o*|]+)/);
+  const arrow = code.match(/(?:<{1,2}[-.=o*|]+>{1,2}|[-.=o*|]+>{1,2}|<{1,2}[-.=o*|]+)/);
   if (!arrow) return -1;
   const colon = code.indexOf(':', arrow.index + arrow[0].length);
   return colon < 0 ? -1 : colon + 1;

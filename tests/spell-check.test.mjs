@@ -39,3 +39,8 @@ test('ignores declarations, unlabeled arrows, and acronyms', () => {
   const source = '@startuml\nparticipant Aplication\nAplication -> API\nAplication -> API: Send HTTP API data\n@enduml';
   assert.deepEqual(analyzeProseSpelling(source, checker), []);
 });
+
+test('checks text displayed on asynchronous arrows', () => {
+  const source = '@startuml\nA ->> B: aplication queued\nB -->> A: statuz received\n@enduml';
+  assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
+});

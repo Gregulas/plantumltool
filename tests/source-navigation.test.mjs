@@ -33,6 +33,30 @@ test('maps a sequence message to the exact relationship line', () => {
   assert.equal(target?.message, 'Second request');
 });
 
+test('maps asynchronous sequence arrows to their exact relationship lines', () => {
+  const source = `@startuml
+participant Portal
+participant API
+Portal ->> API: Submit asynchronously
+API -->> Portal: Accepted response
+Portal <<-- API: Callback notification
+@enduml`;
+  const index = buildSourceNavigationIndex(source);
+  const relationships = index.records.filter(record => record.type === 'relationship');
+  assert.deepEqual(relationships.map(record => ({ line: record.line, source: record.source, target: record.target, message: record.message })), [
+    { line: 4, source: 'Portal', target: 'API', message: 'Submit asynchronously' },
+    { line: 5, source: 'API', target: 'Portal', message: 'Accepted response' },
+    { line: 6, source: 'Portal', target: 'API', message: 'Callback notification' }
+  ]);
+  const target = resolveNavigationTarget(index, {
+    classNames: 'message',
+    attributes: { 'data-participant-1': 'API', 'data-participant-2': 'Portal' },
+    clickedText: 'Accepted response',
+    texts: ['Accepted response']
+  });
+  assert.equal(target?.line, 5);
+});
+
 test('maps class members to their member source lines', () => {
   const source = `@startuml\nclass Application {\n  +id: UUID\n  +submit()\n}\n@enduml`;
   const index = buildSourceNavigationIndex(source);
