@@ -1002,7 +1002,8 @@ body.resizing-rows * { cursor: row-resize !important; user-select: none !importa
   outline-offset: 8px;
 }
 .preview-canvas { position:relative; }
-.preview-canvas svg .source-selection-overlay { fill:color-mix(in srgb,var(--accent) 16%,transparent); stroke:color-mix(in srgb,var(--accent) 78%,white); stroke-width:1.5; vector-effect:non-scaling-stroke; cursor:context-menu; }
+.preview-canvas svg .source-selection-overlay { opacity:0; pointer-events:none; }
+.source-selection-screen-overlay { position:absolute; z-index:14; border:2px solid color-mix(in srgb,var(--accent) 78%,white); border-radius:7px; background:color-mix(in srgb,var(--accent) 14%,transparent); box-shadow:0 0 0 1px color-mix(in srgb,var(--surface) 60%,transparent); cursor:context-menu; }
 .selection-actions { position:absolute; z-index:32; right:16px; top:16px; min-width:190px; padding:10px; display:grid; gap:8px; color:var(--text); background:var(--surface); border:1px solid var(--accent); border-radius:10px; box-shadow:var(--shadow); }
 .selection-actions[hidden] { display:none; }
 .selection-actions strong { font-size:12px; }

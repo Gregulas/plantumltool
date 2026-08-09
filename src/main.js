@@ -900,7 +900,7 @@ function prepareSvg() {
 }
 
 function clearSelectionViewer() {
-  els.previewCanvas.querySelectorAll('.source-selection-overlay').forEach(node => node.remove());
+  els.previewCanvas.querySelectorAll('.source-selection-overlay, .source-selection-screen-overlay, .source-selection-overlays').forEach(node => node.remove());
   els.selectionActions.hidden = true;
 }
 
@@ -941,7 +941,11 @@ function refreshSelectionViewer() {
     const hasNativeLine = SVG_LINE_ATTRIBUTES.some(name => node.hasAttribute(name));
     const semanticGroup = node.tagName.toLowerCase() === 'g' && /message|participant|entity|class|component|actor|node|cluster|state|object|usecase|note|group|divider|delay/i.test(classes);
     const rank = hasNativeLine ? 100 : semanticGroup ? 80 : node.tagName.toLowerCase() === 'text' ? 40 : 10;
-    const candidate = { left, top, right, bottom, rank, area: (right - left) * (bottom - top) };
+    const screen = node.getBoundingClientRect();
+    const candidate = {
+      left, top, right, bottom, rank, area: (right - left) * (bottom - top),
+      screenLeft: screen.left, screenTop: screen.top, screenRight: screen.right, screenBottom: screen.bottom
+    };
     const current = bestByRecord.get(record.id);
     if (!current || candidate.rank > current.rank || (candidate.rank === current.rank && candidate.area > current.area)) bestByRecord.set(record.id, candidate);
   }
@@ -966,6 +970,20 @@ function refreshSelectionViewer() {
   overlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
   layer.appendChild(overlay);
   svg.appendChild(layer);
+
+  const canvasRect = els.previewCanvas.getBoundingClientRect();
+  const screenLeft = Math.min(...bounds.map(item => item.screenLeft));
+  const screenTop = Math.min(...bounds.map(item => item.screenTop));
+  const screenRight = Math.max(...bounds.map(item => item.screenRight));
+  const screenBottom = Math.max(...bounds.map(item => item.screenBottom));
+  const screenOverlay = document.createElement('div');
+  screenOverlay.className = 'source-selection-screen-overlay';
+  screenOverlay.style.left = `${screenLeft - canvasRect.left - 7}px`;
+  screenOverlay.style.top = `${screenTop - canvasRect.top - 6}px`;
+  screenOverlay.style.width = `${Math.max(1, screenRight - screenLeft + 14)}px`;
+  screenOverlay.style.height = `${Math.max(1, screenBottom - screenTop + 12)}px`;
+  screenOverlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
+  els.previewCanvas.appendChild(screenOverlay);
   sendDetachedPreviewState();
 }
 

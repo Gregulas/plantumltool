@@ -8,6 +8,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - File → Open in new tab keeps the current diagram open while loading another file
 - Selected source highlights only its rendered objects and can be extracted into a new tab with required declarations
 - Selection highlighting uses one light bounding rectangle instead of outlining individual SVG fragments
+- Large and transformed diagrams use a screen-aligned selection overlay so highlighting remains visible and correctly positioned
 - Side-by-side PlantUML source editor and SVG preview with a draggable divider
 - Detachable live preview window that can be moved to a second monitor while the editor stays on the primary display
 - Detached diagrams retain click-to-source navigation and object appearance quick editing
