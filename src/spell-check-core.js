@@ -21,13 +21,14 @@ function arrowMessageStart(line) {
 }
 
 export function proseSegments(source) {
-  const text = String(source ?? '').replace(/\r\n?/g, '\n');
-  const lines = text.split('\n');
+  const text = String(source ?? '');
+  const lines = [...text.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)]
+    .filter(match => match[0].length || match.index === 0)
+    .map(match => ({ text: match[0].replace(/(?:\r\n|\r|\n)$/, ''), offset: match.index }));
   const segments = [];
-  let offset = 0;
   let inNote = false;
 
-  lines.forEach((line, index) => {
+  lines.forEach(({ text: line, offset }, index) => {
     const trimmed = line.trim();
     if (inNote) {
       if (/^end\s+note\b/i.test(trimmed)) inNote = false;
@@ -44,7 +45,6 @@ export function proseSegments(source) {
         if (start >= 0) segments.push({ text: line.slice(start), line: index + 1, column: start + 1, offset: offset + start });
       }
     }
-    offset += line.length + 1;
   });
 
   return segments;
@@ -57,6 +57,7 @@ function shouldCheckWord(word) {
 }
 
 export function analyzeProseSpelling(source, checker) {
+  const text = String(source ?? '');
   const diagnostics = [];
   const occurrences = new Map();
   for (const segment of proseSegments(source)) {
@@ -68,16 +69,21 @@ export function analyzeProseSpelling(source, checker) {
       const normalizedWord = word.toLowerCase();
       const occurrence = (occurrences.get(normalizedWord) || 0) + 1;
       occurrences.set(normalizedWord, occurrence);
+      const absoluteStart = segment.offset + match.index;
+      const before = text.slice(0, absoluteStart);
+      const sourceLine = before.split(/\r\n|\r|\n/).length;
+      const lastLineBreak = Math.max(before.lastIndexOf('\n'), before.lastIndexOf('\r'));
+      const sourceColumn = absoluteStart - lastLineBreak;
       diagnostics.push({
-        id: `spell-${segment.line}-${segment.offset + match.index}-${word.toLowerCase()}`,
-        severity: 'warning', source: 'spelling', line: segment.line,
+        id: `spell-${sourceLine}-${absoluteStart}-${word.toLowerCase()}`,
+        severity: 'warning', source: 'spelling', line: sourceLine,
         word,
         ignoreKey: `${normalizedWord}:${occurrence}`,
-        column: segment.column + match.index,
+        column: sourceColumn,
         message: `Possible spelling mistake: “${word}”.`,
         suggestion: suggestions.length ? `Suggested spelling: ${suggestions.join(', ')}.` : 'Check this word or keep it if it is a project-specific term.',
         detail: 'Spell checking applies only to displayed arrow labels and note text.',
-        fix: replacement ? { label: `Change to ${replacement}`, start: segment.offset + match.index, end: segment.offset + match.index + word.length, text: replacement } : null
+        fix: replacement ? { label: `Change to ${replacement}`, start: absoluteStart, end: absoluteStart + word.length, text: replacement } : null
       });
     }
   }
