@@ -1,13 +1,14 @@
 export const DETACHED_PREVIEW_CHANNEL = 'plantuml-studio-detached-preview-v1';
 
-export function detachedPreviewState({ svg = '', filename = 'diagram.puml', dark = false, status = '', selectionRecordIds = [] } = {}) {
+export function detachedPreviewState({ svg = '', filename = 'diagram.puml', dark = false, status = '', selectionRecordIds = [], focusRecordId = '' } = {}) {
   return {
     type: 'detached-preview-state',
     svg: String(svg || ''),
     filename: String(filename || 'diagram.puml'),
     theme: dark ? 'dark' : 'light',
     status: String(status || ''),
-    selectionRecordIds: Array.isArray(selectionRecordIds) ? selectionRecordIds.map(String) : []
+    selectionRecordIds: Array.isArray(selectionRecordIds) ? selectionRecordIds.map(String) : [],
+    focusRecordId: String(focusRecordId || '')
   };
 }
 

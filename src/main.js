@@ -20,6 +20,7 @@ import { createDocumentTab, isDocumentDirty, sourceForSelection } from './docume
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
+import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -419,12 +420,14 @@ function currentDetachedPreviewState() {
       .filter(record => record.line >= range.startLine && record.line <= range.endLine)
       .map(record => record.id)
     : [];
+  const focusRecord = currentEditingRecord();
   return detachedPreviewState({
     svg: els.previewCanvas.querySelector('svg')?.outerHTML || state.svg,
     filename: state.filename,
     dark: state.dark,
     status: els.renderStatus?.textContent || 'Synchronized with editor',
-    selectionRecordIds
+    selectionRecordIds,
+    focusRecordId: focusRecord?.id || ''
   });
 }
 
@@ -924,6 +927,7 @@ function prepareSvg() {
   decorateSvgNavigation(svg);
   applyZoom();
   requestAnimationFrame(refreshSelectionViewer);
+  requestAnimationFrame(() => followEditorInPreview({ behavior: 'auto', notifyDetached: false }));
 }
 
 function clearSelectionViewer() {
@@ -938,6 +942,41 @@ function selectedSourceLineRange() {
   const selected = state.source.slice(selection.start, selection.end).replace(/\r\n?/g, '\n');
   const startLine = before.split('\n').length;
   return { ...selection, startLine, endLine: startLine + selected.split('\n').length - 1 };
+}
+
+function currentEditingRecord() {
+  const index = state.sourceNavigationIndex;
+  if (!index) return null;
+  const selection = sourceSelectionFromView();
+  return navigationRecordForLine(index, sourceLineAtOffset(state.source, selection.start));
+}
+
+let followEditorTimer = null;
+function followEditorInPreview({ behavior = 'smooth', notifyDetached = true } = {}) {
+  clearTimeout(followEditorTimer);
+  const record = currentEditingRecord();
+  if (!record) return;
+  const nodes = [...els.previewCanvas.querySelectorAll('[data-source-nav-id]')]
+    .filter(node => node.dataset.sourceNavId === record.id);
+  const node = nodes
+    .map(candidate => ({ candidate, rect: candidate.getBoundingClientRect() }))
+    .filter(item => item.rect.width > 1 && item.rect.height > 1)
+    .sort((left, right) => left.rect.width * left.rect.height - right.rect.width * right.rect.height)[0]?.candidate;
+  if (node && !els.workspace.classList.contains('detached-preview-active')) {
+    const viewport = els.previewViewport.getBoundingClientRect();
+    const bounds = node.getBoundingClientRect();
+    els.previewViewport.scrollTo({
+      left: els.previewViewport.scrollLeft + bounds.left - viewport.left - (viewport.width - bounds.width) / 2,
+      top: els.previewViewport.scrollTop + bounds.top - viewport.top - (viewport.height - bounds.height) / 2,
+      behavior
+    });
+  }
+  if (notifyDetached) sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-focus', 'all', { recordId: record.id }));
+}
+
+function scheduleFollowEditor() {
+  clearTimeout(followEditorTimer);
+  followEditorTimer = setTimeout(() => followEditorInPreview(), 80);
 }
 
 function refreshSelectionViewer() {
@@ -2123,6 +2162,7 @@ els.documentTabs.addEventListener('click', event => {
 });
 els.selectionOpenTabBtn.addEventListener('click', openSelectionInNewTab);
 for (const eventName of ['select', 'keyup', 'mouseup']) els.editor.addEventListener(eventName, () => requestAnimationFrame(refreshSelectionViewer));
+for (const eventName of ['input', 'select', 'keyup', 'mouseup', 'click']) els.editor.addEventListener(eventName, scheduleFollowEditor);
 
 let quickEditRecord = null;
 let quickEditTimer = null;

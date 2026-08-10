@@ -52,6 +52,23 @@ let quickEditPoint = null;
 let activationRecordId = null;
 let activationPoint = null;
 
+function scrollToRecord(recordId, behavior = 'smooth') {
+  if (!recordId) return;
+  const nodes = [...els.canvas.querySelectorAll('[data-source-nav-id]')].filter(node => node.dataset.sourceNavId === recordId);
+  const node = nodes
+    .map(candidate => ({ candidate, rect: candidate.getBoundingClientRect() }))
+    .filter(item => item.rect.width > 1 && item.rect.height > 1)
+    .sort((left, right) => left.rect.width * left.rect.height - right.rect.width * right.rect.height)[0]?.candidate;
+  if (!node) return;
+  const viewport = els.viewport.getBoundingClientRect();
+  const bounds = node.getBoundingClientRect();
+  els.viewport.scrollTo({
+    left: els.viewport.scrollLeft + bounds.left - viewport.left - (viewport.width - bounds.width) / 2,
+    top: els.viewport.scrollTop + bounds.top - viewport.top - (viewport.height - bounds.height) / 2,
+    behavior
+  });
+}
+
 function clearSelectionOverlay() {
   els.canvas.querySelector('.detached-selection-screen-overlay')?.remove();
   document.querySelector('#detachedSelectionActions').hidden = true;
@@ -107,7 +124,11 @@ function closeQuickEdit() {
 }
 
 function receiveAction(message) {
-  if (message.previewId !== previewId) return;
+  if (message.previewId !== previewId && message.previewId !== 'all') return;
+  if (isDetachedPreviewAction(message, 'detached-preview-focus')) {
+    scrollToRecord(message.recordId);
+    return;
+  }
   if (isDetachedPreviewAction(message, 'detached-preview-activation-data')) {
     activationRecordId = message.recordId;
     const menu = document.querySelector('#detachedArrowAction');
@@ -170,6 +191,7 @@ function receive(message) {
     svg?.removeAttribute('width');
     svg?.removeAttribute('height');
     applyZoom();
+    requestAnimationFrame(() => scrollToRecord(message.focusRecordId, 'auto'));
   } else {
     clearSelectionOverlay();
   }
