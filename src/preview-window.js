@@ -113,8 +113,8 @@ function refreshSelectionOverlay() {
 
 function sendAction(type, payload = {}) {
   const message = detachedPreviewAction(type, previewId, payload);
-  channel?.postMessage(message);
-  window.opener?.postMessage(message, location.origin);
+  if (channel) channel.postMessage(message);
+  else window.opener?.postMessage(message, location.origin);
 }
 
 function closeQuickEdit() {

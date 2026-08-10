@@ -47,11 +47,13 @@ button, select { color: var(--text); }
 }
 
 .document-tabs { min-height:38px; padding:5px 8px 0; display:flex; gap:4px; overflow-x:auto; background:var(--surface-2); border-bottom:1px solid var(--border); }
-.document-tab { min-width:120px; max-width:240px; height:33px; padding:5px 8px; display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-bottom:0; border-radius:8px 8px 0 0; background:color-mix(in srgb,var(--surface) 72%,var(--surface-2)); color:var(--muted); }
+.document-tab { min-width:120px; max-width:240px; height:33px; padding:3px 5px; display:flex; align-items:center; gap:3px; border:1px solid var(--border); border-bottom:0; border-radius:8px 8px 0 0; background:color-mix(in srgb,var(--surface) 72%,var(--surface-2)); color:var(--muted); }
 .document-tab.active { color:var(--text); background:var(--surface); border-color:var(--accent); }
-.document-tab > span:nth-child(2) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tab-activate { min-width:0; min-height:25px; flex:1; padding:2px 3px; display:flex; align-items:center; gap:6px; color:inherit; background:transparent; border:0; }
+.tab-activate:hover { border:0; background:transparent; }
+.tab-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tab-dirty { width:9px; color:var(--accent-strong); font-size:10px; }
-.tab-close { margin-left:auto; padding:0 3px; border-radius:4px; font-size:15px; }
+.tab-close { min-width:24px; min-height:24px; margin-left:auto; padding:0 3px; color:inherit; background:transparent; border:0; border-radius:4px; font-size:15px; }
 .tab-close:hover { background:var(--danger-bg); color:var(--danger); }
 
 .topbar {

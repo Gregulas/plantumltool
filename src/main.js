@@ -649,15 +649,17 @@ function syncActiveDocument() {
 function renderDocumentTabs() {
   if (!els?.documentTabs) return;
   els.documentTabs.innerHTML = documentTabs.map(tab => `
-    <button class="document-tab${tab.id === activeTabId ? ' active' : ''}" type="button" role="tab" aria-selected="${tab.id === activeTabId}" data-tab-id="${tab.id}">
-      <span class="tab-dirty">${isDocumentDirty(tab) ? '●' : ''}</span><span>${escapeHtml(tab.filename)}</span>
-      ${documentTabs.length > 1 ? `<span class="tab-close" role="button" aria-label="Close ${escapeHtml(tab.filename)}" data-close-tab="${tab.id}">×</span>` : ''}
-    </button>`).join('');
+    <div class="document-tab${tab.id === activeTabId ? ' active' : ''}">
+      <button class="tab-activate" type="button" role="tab" aria-selected="${tab.id === activeTabId}" data-tab-id="${tab.id}">
+        <span class="tab-dirty">${isDocumentDirty(tab) ? '●' : ''}</span><span class="tab-name">${escapeHtml(tab.filename)}</span>
+      </button>
+      ${documentTabs.length > 1 ? `<button class="tab-close" type="button" aria-label="Close ${escapeHtml(tab.filename)}" data-close-tab="${tab.id}">×</button>` : ''}
+    </div>`).join('');
 }
 
-function activateDocumentTab(id, { render = true } = {}) {
+function activateDocumentTab(id, { render = true, syncCurrent = true } = {}) {
   if (id === activeTabId) return;
-  syncActiveDocument();
+  if (syncCurrent) syncActiveDocument();
   const tab = documentTabs.find(item => item.id === id);
   if (!tab) return;
   state.renderSeq += 1;
@@ -706,11 +708,14 @@ function closeDocumentTab(id) {
   if (documentTabs.length === 1) return;
   const index = documentTabs.findIndex(tab => tab.id === id);
   if (index < 0) return;
+  if (id === activeTabId) syncActiveDocument();
+  const closingTab = documentTabs[index];
+  if (isDocumentDirty(closingTab) && !window.confirm(`Close “${closingTab.filename}” without saving your changes?`)) return;
   const wasActive = id === activeTabId;
   documentTabs.splice(index, 1);
   if (wasActive) {
     activeTabId = '';
-    activateDocumentTab(documentTabs[Math.max(0, index - 1)].id);
+    activateDocumentTab(documentTabs[Math.max(0, index - 1)].id, { syncCurrent: false });
   } else renderDocumentTabs();
 }
 
@@ -2212,8 +2217,10 @@ renderRecentFilesMenu();
 els.documentTabs.addEventListener('click', event => {
   const close = event.target.closest('[data-close-tab]');
   if (close) {
+    event.preventDefault();
     event.stopPropagation();
-    closeDocumentTab(close.dataset.closeTab);
+    const closingId = close.getAttribute('data-close-tab');
+    closeDocumentTab(closingId);
     return;
   }
   const tab = event.target.closest('[data-tab-id]');
