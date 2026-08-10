@@ -57,5 +57,6 @@ test('reports and fixes the exact multiline note line in CRLF files', () => {
   const [diagnostic] = analyzeProseSpelling(source, checker);
   assert.equal(diagnostic.line, 155);
   assert.equal(diagnostic.column, 11);
+  assert.equal(source.slice(diagnostic.range.start, diagnostic.range.end), 'aplication');
   assert.equal(source.slice(diagnostic.fix.start, diagnostic.fix.end), 'aplication');
 });

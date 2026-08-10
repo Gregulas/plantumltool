@@ -80,6 +80,7 @@ export function analyzeProseSpelling(source, checker) {
         word,
         ignoreKey: `${normalizedWord}:${occurrence}`,
         column: sourceColumn,
+        range: { start: absoluteStart, end: absoluteStart + word.length },
         message: `Possible spelling mistake: “${word}”.`,
         suggestion: suggestions.length ? `Suggested spelling: ${suggestions.join(', ')}.` : 'Check this word or keep it if it is a project-specific term.',
         detail: 'Spell checking applies only to displayed arrow labels and note text.',

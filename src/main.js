@@ -1591,12 +1591,25 @@ function jumpToLine(line, column = 1, options = {}) {
   const columnOffset = Math.min(Math.max(0, column - 1), entry.text.length);
   const sourceStart = options.selectLine ? entry.start : entry.start + columnOffset;
   const sourceEnd = options.selectLine ? entry.start + entry.text.length : sourceStart;
+  jumpToSourceRange(sourceStart, sourceEnd, { line: safeLine });
+}
+
+function jumpToSourceRange(sourceStart, sourceEnd = sourceStart, { line = null } = {}) {
+  if (![sourceStart, sourceEnd].every(Number.isInteger)) return;
+  const safeStart = Math.min(Math.max(0, sourceStart), state.source.length);
+  const safeEnd = Math.min(Math.max(safeStart, sourceEnd), state.source.length);
+  const sourceLine = line || sourceLineAtOffset(state.source, safeStart);
+  const hidden = containingCollapsedRegion(state.foldProjection, sourceLine);
+  if (hidden) {
+    state.foldedStarts.delete(hidden.startLine);
+    applyFoldProjection({ preserveScroll: false });
+  }
   const projection = state.foldProjection || buildFoldProjection(state.source, state.foldedStarts);
-  const start = sourceOffsetToViewOffset(state.source, projection, sourceStart);
-  const end = sourceOffsetToViewOffset(state.source, projection, sourceEnd);
+  const start = sourceOffsetToViewOffset(state.source, projection, safeStart);
+  const end = sourceOffsetToViewOffset(state.source, projection, safeEnd);
   els.editor.focus();
   els.editor.setSelectionRange(start, end);
-  const viewLine = sourceLineToViewLine(projection, safeLine) || safeLine;
+  const viewLine = sourceLineToViewLine(projection, sourceLine) || sourceLine;
   const lineHeight = parseFloat(getComputedStyle(els.editor).lineHeight) || 21;
   els.editor.scrollTop = Math.max(0, (viewLine - 1) * lineHeight - els.editor.clientHeight * 0.35);
   syncScroll();
@@ -1959,7 +1972,11 @@ els.problemsList.addEventListener('click', event => {
   }
   if (control.dataset.action === 'ignore-spelling') return ignoreSpellingDiagnostic(item);
   if (control.dataset.action === 'ignore-all-spelling') return ignoreSpellingDiagnostic(item, true);
-  if (control.dataset.action === 'jump') jumpToLine(item.line, item.column);
+  if (control.dataset.action === 'jump') {
+    const range = item.range || (item.source === 'spelling' ? item.fix : null);
+    if (range && Number.isInteger(range.start) && Number.isInteger(range.end)) jumpToSourceRange(range.start, range.end, { line: item.line });
+    else jumpToLine(item.line, item.column);
+  }
 });
 
 els.workspaceSplitter.addEventListener('pointerdown', event => {
