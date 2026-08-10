@@ -230,7 +230,7 @@ app.innerHTML = `
             <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+0')}</kbd></button>
             <button id="detachedPreviewBtn" type="button"><span>Open detached preview</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+W')}</kbd></button>
             <div class="menu-separator"></div>
-            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+A')}</kbd></label>
+            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Manual suggestions enabled</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+A')}</kbd></label>
             <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+L')}</kbd></label>
             <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+T')}</kbd></button>
           </div>
@@ -1730,6 +1730,7 @@ const autocomplete = createAutocomplete({
   textarea: els.editor,
   host: document.querySelector('.editor-wrap'),
   enabled: state.autocomplete,
+  shortcutHint: shortcutLabel('Alt+Space'),
   onBeforeChange: () => editHistory.checkpoint(),
   onChange: () => {
     editHistory.checkpoint();
@@ -1820,7 +1821,7 @@ els.editor.addEventListener('keydown', event => {
   const editingKey = event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key === 'Tab' || (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey);
   if (editingKey && hasCollapsedFolds()) unfoldAllPreserveCaret();
   if (colorPicker.handleKeydown(event)) return;
-  if ((event.ctrlKey || event.metaKey) && event.code === 'Space') colorPicker.close();
+  if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'Space') colorPicker.close();
   if (autocomplete.handleKeydown(event)) return;
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {

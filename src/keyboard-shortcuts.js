@@ -6,6 +6,7 @@ export const SHORTCUT_GROUPS = [
   ] },
   { title: 'Edit', items: [
     ['Undo', 'Ctrl/Cmd+Z'], ['Redo', 'Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z'],
+    ['Show suggestions', 'Alt+Space'],
     ['Format script', 'Ctrl/Cmd+Shift+F'], ['Fold all', 'Ctrl/Cmd+Alt+F'],
     ['Unfold all', 'Ctrl/Cmd+Alt+U']
   ] },

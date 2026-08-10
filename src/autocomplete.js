@@ -208,14 +208,14 @@ function caretCoordinates(textarea, position, relativeTo) {
   return { x, y };
 }
 
-export function createAutocomplete({ textarea, host, onBeforeChange, onChange, enabled = true }) {
+export function createAutocomplete({ textarea, host, onBeforeChange, onChange, enabled = true, shortcutHint = 'Alt+Space' }) {
   const popup = document.createElement('div');
   popup.className = 'autocomplete-popup';
   popup.hidden = true;
   popup.innerHTML = `
     <div class="autocomplete-header">
       <span>PlantUML suggestions</span>
-      <kbd>Ctrl Space</kbd>
+      <kbd>${escapeHtml(shortcutHint)}</kbd>
     </div>
     <div class="autocomplete-list" role="listbox"></div>
     <div class="autocomplete-footer">↑↓ navigate · Enter/Tab insert · Esc close</div>
@@ -342,8 +342,8 @@ export function createAutocomplete({ textarea, host, onBeforeChange, onChange, e
   });
 
   textarea.addEventListener('input', () => {
-    if (!isEnabled) return;
-    queueMicrotask(() => popup.hidden ? open() : refresh());
+    if (!isEnabled || popup.hidden) return;
+    queueMicrotask(refresh);
   });
 
   textarea.addEventListener('click', close);
@@ -355,7 +355,7 @@ export function createAutocomplete({ textarea, host, onBeforeChange, onChange, e
   });
 
   function handleKeydown(event) {
-    if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
+    if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'Space') {
       event.preventDefault();
       open({ explicit: true });
       return true;
