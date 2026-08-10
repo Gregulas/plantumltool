@@ -136,6 +136,12 @@ button, select { color: var(--text); }
 .menu-popover button:disabled { opacity: .45; }
 .menu-popover kbd, .menu-value { color: var(--muted); font: 10px/1.2 "SFMono-Regular", Consolas, monospace; }
 .menu-separator { height: 1px; margin: 4px 5px; background: var(--border); }
+.menu-section-label { padding:5px 10px 3px; color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+.recent-files-menu { display:grid; }
+.recent-files-menu button { min-width:250px; }
+.recent-files-menu button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.recent-files-menu button small { margin-left:auto; color:var(--muted); font-size:9px; }
+.recent-files-empty { padding:7px 10px; color:var(--muted); font-size:11px; }
 .menu-check { justify-content: flex-start; gap: 9px; cursor: pointer; }
 .menu-check input { accent-color: var(--accent); }
 .menu-check span { flex: 1; }

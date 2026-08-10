@@ -49,3 +49,14 @@ test('checks text on asynchronous arrows with endpoint decorations', () => {
   const source = '@startuml\nA -->>o B: aplication queued\nB o<<-- A: statuz received\n@enduml';
   assert.deepEqual(analyzeProseSpelling(source, checker).map(item => item.word), ['aplication', 'statuz']);
 });
+
+test('reports and fixes the exact multiline note line in CRLF files', () => {
+  const lines = Array.from({ length: 152 }, (_, index) => `' filler ${index + 1}`);
+  lines.push('note over Portal', '- Enforcement judgment', '- Bounced aplication', '- defaulted communication bells', 'end note', '@enduml');
+  const source = lines.join('\r\n');
+  const [diagnostic] = analyzeProseSpelling(source, checker);
+  assert.equal(diagnostic.line, 155);
+  assert.equal(diagnostic.column, 11);
+  assert.equal(source.slice(diagnostic.range.start, diagnostic.range.end), 'aplication');
+  assert.equal(source.slice(diagnostic.fix.start, diagnostic.fix.end), 'aplication');
+});
