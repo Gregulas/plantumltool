@@ -21,6 +21,7 @@ import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, 
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
+import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -194,6 +195,10 @@ app.innerHTML = `
             <button id="newBtn" type="button"><span>New</span><kbd>${shortcutLabel('Ctrl/Cmd+N')}</kbd></button>
             <button id="openBtn" type="button"><span>Open…</span><kbd>${shortcutLabel('Ctrl/Cmd+O')}</kbd></button>
             <button id="openInNewTabBtn" type="button"><span>Open in new tab…</span></button>
+            <div class="menu-separator"></div>
+            <div class="menu-section-label">Recent files</div>
+            <div id="recentFilesMenu" class="recent-files-menu"></div>
+            <button id="clearRecentFilesBtn" type="button"><span>Clear recent files</span></button>
             <div class="menu-separator"></div>
             <button id="saveBtn" type="button"><span>Save</span><kbd>${shortcutLabel('Ctrl/Cmd+S')}</kbd></button>
             <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+S')}</kbd></button>
@@ -404,7 +409,23 @@ const els = {
   ,arrowActionMenu: document.querySelector('#arrowActionMenu')
   ,arrowActionTitle: document.querySelector('#arrowActionTitle')
   ,arrowActivationBtn: document.querySelector('#arrowActivationBtn')
+  ,recentFilesMenu: document.querySelector('#recentFilesMenu')
+  ,clearRecentFilesBtn: document.querySelector('#clearRecentFilesBtn')
 };
+
+let recentFiles = loadRecentFiles();
+
+function renderRecentFilesMenu() {
+  els.recentFilesMenu.innerHTML = recentFiles.length
+    ? recentFiles.map((item, index) => `<button type="button" data-recent-file="${index}" title="Open ${escapeHtml(item.filename)}"><span>${escapeHtml(item.filename)}</span><small>${new Date(item.openedAt).toLocaleDateString()}</small></button>`).join('')
+    : '<span class="recent-files-empty">No recent files</span>';
+  els.clearRecentFilesBtn.disabled = recentFiles.length === 0;
+}
+
+function rememberRecentFile(filename = state.filename, source = canonicalSource()) {
+  recentFiles = storeRecentFile(localStorage, recentFiles, { filename, source });
+  renderRecentFilesMenu();
+}
 
 let detachedPreviewWindow = null;
 let detachedPreviewClosePoll = null;
@@ -1400,10 +1421,13 @@ function allDiagnostics() {
 function updateLineNumbers(lineCount) {
   const diagnosticByLine = new Map();
   for (const item of allDiagnostics()) {
-    if (!item.line) continue;
-    const current = diagnosticByLine.get(item.line);
+    const diagnosticLine = item.source === 'spelling' && Number.isInteger(item.range?.start)
+      ? sourceLineAtOffset(state.source, item.range.start)
+      : item.line;
+    if (!diagnosticLine) continue;
+    const current = diagnosticByLine.get(diagnosticLine);
     if (!current || (current === 'warning' && item.severity === 'error')) {
-      diagnosticByLine.set(item.line, item.severity);
+      diagnosticByLine.set(diagnosticLine, item.severity);
     }
   }
 
@@ -1662,6 +1686,7 @@ async function writeSourceToHandle(handle) {
   state.savedSource = canonicalSource();
   state.isNewFile = false;
   updateFileStatus();
+  rememberRecentFile(state.filename, canonicalSource());
   els.renderStatus.textContent = `Saved ${state.filename}`;
 }
 
@@ -1706,6 +1731,7 @@ async function openSourceFile(inNewTab = false) {
       });
       const file = await handle.getFile();
       const source = await file.text();
+      rememberRecentFile(file.name, source);
       if (inNewTab) addDocumentTab(source, file.name, { fileHandle: handle, saved: true });
       else replaceSource(source, file.name, { fileHandle: handle, saved: true });
       return;
@@ -1938,6 +1964,18 @@ els.unfoldAllBtn.addEventListener('click', () => {
 document.querySelector('#newBtn').addEventListener('click', () => addDocumentTab('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
 document.querySelector('#openBtn').addEventListener('click', () => openSourceFile(false));
 document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
+els.recentFilesMenu.addEventListener('click', event => {
+  const button = event.target.closest('[data-recent-file]');
+  const item = button ? recentFiles[Number(button.dataset.recentFile)] : null;
+  if (!item) return;
+  replaceSource(item.source, item.filename, { saved: true });
+  rememberRecentFile(item.filename, item.source);
+  els.renderStatus.textContent = `Opened recent file ${item.filename}`;
+});
+els.clearRecentFilesBtn.addEventListener('click', () => {
+  recentFiles = clearRecentFiles();
+  renderRecentFilesMenu();
+});
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
 document.querySelector('#saveAsBtn').addEventListener('click', saveSourceAs);
 document.querySelector('#quickSaveBtn').addEventListener('click', () => saveSource());
@@ -2153,6 +2191,7 @@ document.querySelector('#saveAsFallbackForm').addEventListener('submit', event =
   state.savedSource = canonicalSource();
   state.isNewFile = false;
   updateFileStatus();
+  rememberRecentFile(filename, canonicalSource());
   saveAsDialog.close();
   els.renderStatus.textContent = `Downloaded ${filename}`;
 });
@@ -2161,11 +2200,14 @@ els.fileInput.addEventListener('change', async () => {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   const text = await file.text();
+  rememberRecentFile(file.name, text);
   if (openFileInNewTab) addDocumentTab(text, file.name, { saved: true });
   else replaceSource(text, file.name, { saved: true });
   openFileInNewTab = false;
   els.fileInput.value = '';
 });
+
+renderRecentFilesMenu();
 
 els.documentTabs.addEventListener('click', event => {
   const close = event.target.closest('[data-close-tab]');
