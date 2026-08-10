@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { detachedPreviewAction, detachedPreviewLifecycle, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle, isDetachedPreviewState } from '../src/detached-preview.js';
 
 test('creates a serializable detached preview update', () => {
-  const message = detachedPreviewState({ svg: '<svg></svg>', filename: 'flow.puml', dark: true, status: 'Rendered locally' });
+  const message = detachedPreviewState({ svg: '<svg></svg>', filename: 'flow.puml', dark: true, status: 'Rendered locally', selectionRecordIds: ['record-7'], focusRecordId: 'record-8' });
   assert.deepEqual(message, {
-    type: 'detached-preview-state', svg: '<svg></svg>', filename: 'flow.puml', theme: 'dark', status: 'Rendered locally'
+    type: 'detached-preview-state', svg: '<svg></svg>', filename: 'flow.puml', theme: 'dark', status: 'Rendered locally', selectionRecordIds: ['record-7'], focusRecordId: 'record-8'
   });
   assert.equal(isDetachedPreviewState(message), true);
 });

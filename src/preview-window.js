@@ -27,6 +27,8 @@ document.querySelector('#previewApp').innerHTML = `
       <label>Style / stereotype <input id="detachedQuickEditStyle" type="text" placeholder="service" /></label>
       <div class="detached-quick-edit-actions"><button id="detachedQuickEditReset" type="button">Clear</button><button type="submit">Apply</button></div>
     </form>
+    <div id="detachedSelectionActions" class="detached-selection-actions" hidden><strong>Selected script</strong><button id="detachedSelectionOpenTab" type="button">Open in new tab</button></div>
+    <div id="detachedArrowAction" class="detached-arrow-action" hidden><strong id="detachedArrowActionTitle">Sequence call</strong><button id="detachedArrowActivationBtn" type="button">Activate action</button></div>
     <footer><span id="detachedStatus">Connecting…</span><span>PlantUML Studio ${APP_VERSION}</span></footer>
   </div>
 `;
@@ -47,6 +49,67 @@ let restoreBounds = null;
 let quickEditRecordId = null;
 let quickEditTimer = null;
 let quickEditPoint = null;
+let activationRecordId = null;
+let activationPoint = null;
+
+function scrollToRecord(recordId, behavior = 'smooth') {
+  if (!recordId) return;
+  const nodes = [...els.canvas.querySelectorAll('[data-source-nav-id]')].filter(node => node.dataset.sourceNavId === recordId);
+  const node = nodes
+    .map(candidate => ({ candidate, rect: candidate.getBoundingClientRect() }))
+    .filter(item => item.rect.width > 1 && item.rect.height > 1)
+    .sort((left, right) => left.rect.width * left.rect.height - right.rect.width * right.rect.height)[0]?.candidate;
+  if (!node) return;
+  const viewport = els.viewport.getBoundingClientRect();
+  const bounds = node.getBoundingClientRect();
+  els.viewport.scrollTo({
+    left: els.viewport.scrollLeft + bounds.left - viewport.left - (viewport.width - bounds.width) / 2,
+    top: els.viewport.scrollTop + bounds.top - viewport.top - (viewport.height - bounds.height) / 2,
+    behavior
+  });
+}
+
+function clearSelectionOverlay() {
+  els.canvas.querySelector('.detached-selection-screen-overlay')?.remove();
+  document.querySelector('#detachedSelectionActions').hidden = true;
+}
+
+function refreshSelectionOverlay() {
+  clearSelectionOverlay();
+  const selectedIds = new Set(currentMessage?.selectionRecordIds || []);
+  if (!selectedIds.size) return;
+  const bestByRecord = new Map();
+  for (const node of els.canvas.querySelectorAll('[data-source-nav-id]')) {
+    const id = node.dataset.sourceNavId;
+    if (!selectedIds.has(id)) continue;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) continue;
+    const classes = node.getAttribute('class') || '';
+    const nativeLine = ['data-source-line', 'data-line', 'data-line-number', 'data-sourceLine'].some(name => node.hasAttribute(name));
+    const semanticGroup = node.tagName.toLowerCase() === 'g' && /message|participant|entity|class|component|actor|node|cluster|state|object|usecase|note|group|divider|delay/i.test(classes);
+    const rank = nativeLine ? 100 : semanticGroup ? 80 : node.tagName.toLowerCase() === 'text' ? 40 : 10;
+    const candidate = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, rank, area: rect.width * rect.height };
+    const current = bestByRecord.get(id);
+    if (!current || candidate.rank > current.rank || (candidate.rank === current.rank && candidate.area > current.area)) bestByRecord.set(id, candidate);
+  }
+  const bounds = [...bestByRecord.values()];
+  if (!bounds.length) return;
+  const canvasBounds = els.canvas.getBoundingClientRect();
+  const left = Math.min(...bounds.map(item => item.left)) - 7;
+  const top = Math.min(...bounds.map(item => item.top)) - 6;
+  const right = Math.max(...bounds.map(item => item.right)) + 7;
+  const bottom = Math.max(...bounds.map(item => item.bottom)) + 6;
+  const overlay = document.createElement('div');
+  overlay.className = 'detached-selection-screen-overlay';
+  overlay.style.left = `${left - canvasBounds.left}px`;
+  overlay.style.top = `${top - canvasBounds.top}px`;
+  overlay.style.width = `${right - left}px`;
+  overlay.style.height = `${bottom - top}px`;
+  overlay.addEventListener('pointerenter', () => {
+    document.querySelector('#detachedSelectionActions').hidden = false;
+  });
+  els.canvas.appendChild(overlay);
+}
 
 function sendAction(type, payload = {}) {
   const message = detachedPreviewAction(type, previewId, payload);
@@ -61,7 +124,23 @@ function closeQuickEdit() {
 }
 
 function receiveAction(message) {
-  if (!isDetachedPreviewAction(message, 'detached-preview-quick-edit-data') || message.previewId !== previewId) return;
+  if (message.previewId !== previewId && message.previewId !== 'all') return;
+  if (isDetachedPreviewAction(message, 'detached-preview-focus')) {
+    scrollToRecord(message.recordId);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-data')) {
+    activationRecordId = message.recordId;
+    const menu = document.querySelector('#detachedArrowAction');
+    const point = activationPoint || { x: 80, y: 80 };
+    document.querySelector('#detachedArrowActionTitle').textContent = message.title || 'Sequence call';
+    document.querySelector('#detachedArrowActivationBtn').textContent = message.label || 'Activate action';
+    menu.style.left = `${Math.min(window.innerWidth - 220, Math.max(12, point.x))}px`;
+    menu.style.top = `${Math.min(window.innerHeight - 120, Math.max(60, point.y))}px`;
+    menu.hidden = false;
+    return;
+  }
+  if (!isDetachedPreviewAction(message, 'detached-preview-quick-edit-data')) return;
   quickEditRecordId = message.recordId;
   els.quickEditTitle.textContent = `Quick edit • ${message.title || 'diagram object'}`;
   els.quickEditColor.value = message.color || '';
@@ -83,6 +162,7 @@ function applyZoom() {
   els.canvas.style.width = `${canvas.width}px`;
   els.canvas.style.height = `${canvas.height}px`;
   els.zoomReset.textContent = `${Math.round(zoom * 100)}%`;
+  requestAnimationFrame(refreshSelectionOverlay);
 }
 
 function setZoom(next) {
@@ -105,11 +185,15 @@ function receive(message) {
   els.status.textContent = message.status || 'Synchronized with editor';
   document.title = `${message.filename} • Detached Preview`;
   if (message.svg) {
+    clearSelectionOverlay();
     els.canvas.innerHTML = message.svg;
     const svg = els.canvas.querySelector('svg');
     svg?.removeAttribute('width');
     svg?.removeAttribute('height');
     applyZoom();
+    requestAnimationFrame(() => scrollToRecord(message.focusRecordId, 'auto'));
+  } else {
+    clearSelectionOverlay();
   }
 }
 
@@ -182,7 +266,18 @@ els.canvas.addEventListener('click', event => {
   sendAction('detached-preview-navigate', { recordId: marked.dataset.sourceNavId });
   els.status.textContent = 'Opened source location in the editor window';
 });
+els.canvas.addEventListener('contextmenu', event => {
+  const marked = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
+  if (!marked) return;
+  event.preventDefault();
+  activationPoint = { x: event.clientX, y: event.clientY };
+  sendAction('detached-preview-activation-request', { recordId: marked.dataset.sourceNavId });
+});
 els.canvas.addEventListener('pointerover', event => {
+  if (event.target instanceof Element && event.target.closest('.detached-selection-screen-overlay')) {
+    document.querySelector('#detachedSelectionActions').hidden = false;
+    return;
+  }
   const marked = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
   if (!marked) return;
   clearTimeout(quickEditTimer);
@@ -204,6 +299,20 @@ els.quickEdit.addEventListener('submit', event => {
 });
 document.querySelector('#detachedQuickEditClose').addEventListener('click', closeQuickEdit);
 document.querySelector('#detachedQuickEditReset').addEventListener('click', () => { els.quickEditColor.value = ''; els.quickEditStyle.value = ''; });
+document.querySelector('#detachedSelectionOpenTab').addEventListener('click', () => {
+  sendAction('detached-preview-open-selection-tab');
+  document.querySelector('#detachedSelectionActions').hidden = true;
+  els.status.textContent = 'Opened selection in a new editor tab';
+});
+document.querySelector('#detachedArrowActivationBtn').addEventListener('click', () => {
+  if (activationRecordId) sendAction('detached-preview-activation-apply', { recordId: activationRecordId });
+  document.querySelector('#detachedArrowAction').hidden = true;
+  activationRecordId = null;
+  els.status.textContent = 'Activation update sent to editor';
+});
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.detached-arrow-action')) document.querySelector('#detachedArrowAction').hidden = true;
+});
 els.windowSize.addEventListener('click', toggleMaximize);
 document.querySelector('header').addEventListener('dblclick', event => {
   if (!event.target.closest('button')) toggleMaximize();

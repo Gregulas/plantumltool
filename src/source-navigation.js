@@ -276,6 +276,7 @@ export function buildSourceNavigationIndex(source) {
         source: relationship.source,
         target: relationship.target,
         message: relationship.label,
+        arrow: relationship.arrow,
         line,
         statement: raw
       }, ++sequence));

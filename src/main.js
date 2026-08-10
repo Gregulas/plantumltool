@@ -16,8 +16,11 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
+import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
+import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
+import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -170,6 +173,9 @@ const state = {
   foldedStarts: new Set(),
   foldProjection: null
 };
+const documentTabs = [createDocumentTab(state.source, 'diagram.puml', { isNew: true })];
+let activeTabId = documentTabs[0].id;
+let openFileInNewTab = false;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -187,6 +193,7 @@ app.innerHTML = `
           <div class="menu-popover">
             <button id="newBtn" type="button"><span>New</span><kbd>${shortcutLabel('Ctrl/Cmd+N')}</kbd></button>
             <button id="openBtn" type="button"><span>Open…</span><kbd>${shortcutLabel('Ctrl/Cmd+O')}</kbd></button>
+            <button id="openInNewTabBtn" type="button"><span>Open in new tab…</span></button>
             <div class="menu-separator"></div>
             <button id="saveBtn" type="button"><span>Save</span><kbd>${shortcutLabel('Ctrl/Cmd+S')}</kbd></button>
             <button id="saveAsBtn" type="button"><span>Save As…</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+S')}</kbd></button>
@@ -224,7 +231,7 @@ app.innerHTML = `
             <button id="fitBtn" type="button"><span>Fit diagram</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+0')}</kbd></button>
             <button id="detachedPreviewBtn" type="button"><span>Open detached preview</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+W')}</kbd></button>
             <div class="menu-separator"></div>
-            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Autocomplete</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+A')}</kbd></label>
+            <label class="menu-check"><input id="autocompleteToggle" type="checkbox" /><span>Manual suggestions enabled</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+A')}</kbd></label>
             <label class="menu-check"><input id="liveToggle" type="checkbox" /><span>Live render</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+L')}</kbd></label>
             <button id="themeBtn" type="button"><span>Toggle dark theme</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+T')}</kbd></button>
           </div>
@@ -246,6 +253,7 @@ app.innerHTML = `
       </div>
       <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
+    <div id="documentTabs" class="document-tabs" role="tablist" aria-label="Open diagrams"></div>
 
     <dialog id="shortcutsDialog" class="shortcuts-dialog" aria-labelledby="shortcutsTitle">
       <div class="shortcuts-heading">
@@ -315,6 +323,8 @@ app.innerHTML = `
               <p>Loading local PlantUML engine…</p>
             </div>
           </div>
+          <div id="selectionActions" class="selection-actions" hidden><strong>Selected script</strong><button id="selectionOpenTabBtn" type="button">Open in new tab</button></div>
+          <div id="arrowActionMenu" class="arrow-action-menu" hidden><strong id="arrowActionTitle">Sequence call</strong><button id="arrowActivationBtn" type="button">Activate action</button></div>
         </div>
 
         <form id="objectQuickEdit" class="object-quick-edit" hidden>
@@ -388,6 +398,12 @@ const els = {
   quickEditStyle: document.querySelector('#quickEditStyle'),
   quickEditClose: document.querySelector('#quickEditClose'),
   quickEditReset: document.querySelector('#quickEditReset')
+  ,documentTabs: document.querySelector('#documentTabs')
+  ,selectionActions: document.querySelector('#selectionActions')
+  ,selectionOpenTabBtn: document.querySelector('#selectionOpenTabBtn')
+  ,arrowActionMenu: document.querySelector('#arrowActionMenu')
+  ,arrowActionTitle: document.querySelector('#arrowActionTitle')
+  ,arrowActivationBtn: document.querySelector('#arrowActivationBtn')
 };
 
 let detachedPreviewWindow = null;
@@ -398,11 +414,20 @@ const DETACHED_PREVIEW_LEASE_MS = 1750;
 const detachedPreviewChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(DETACHED_PREVIEW_CHANNEL) : null;
 
 function currentDetachedPreviewState() {
+  const range = selectedSourceLineRange();
+  const selectionRecordIds = range && state.sourceNavigationIndex
+    ? state.sourceNavigationIndex.records
+      .filter(record => record.line >= range.startLine && record.line <= range.endLine)
+      .map(record => record.id)
+    : [];
+  const focusRecord = currentEditingRecord();
   return detachedPreviewState({
     svg: els.previewCanvas.querySelector('svg')?.outerHTML || state.svg,
     filename: state.filename,
     dark: state.dark,
-    status: els.renderStatus?.textContent || 'Synchronized with editor'
+    status: els.renderStatus?.textContent || 'Synchronized with editor',
+    selectionRecordIds,
+    focusRecordId: focusRecord?.id || ''
   });
 }
 
@@ -479,6 +504,10 @@ function handleDetachedPreviewAction(message, target = null) {
     if (record) navigateToDiagramRecord(record);
     return;
   }
+  if (isDetachedPreviewAction(message, 'detached-preview-open-selection-tab')) {
+    openSelectionInNewTab();
+    return;
+  }
   if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-request')) {
     const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
     if (!record || record.type !== 'element') return;
@@ -496,6 +525,21 @@ function handleDetachedPreviewAction(message, target = null) {
   if (isDetachedPreviewAction(message, 'detached-preview-quick-edit-apply')) {
     const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
     if (record) applyAppearanceToRecord(record, { color: message.color, style: message.style });
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-request')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    const action = record && arrowActivationForRecord(record);
+    if (action) sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-activation-data', message.previewId, {
+      recordId: record.id,
+      title: describeNavigationRecord(record),
+      label: action.label
+    }), target);
+    return;
+  }
+  if (isDetachedPreviewAction(message, 'detached-preview-activation-apply')) {
+    const record = state.sourceNavigationIndex?.byId?.get(message.recordId);
+    if (record) applyArrowActivation(record);
   }
 }
 
@@ -563,6 +607,90 @@ function hasCollapsedFolds() {
 
 function canonicalSource() {
   return hasCollapsedFolds() ? state.source : els.editor.value;
+}
+
+function activeDocumentTab() {
+  return documentTabs.find(tab => tab.id === activeTabId) || documentTabs[0];
+}
+
+function syncActiveDocument() {
+  const tab = activeDocumentTab();
+  if (!tab || !els?.editor) return;
+  tab.source = canonicalSource();
+  for (const key of ['svg', 'filename', 'fileHandle', 'savedSource', 'isNewFile', 'lastSuccessfulSource', 'sourceNavigationIndex', 'svgSourceLineOffset', 'localDiagnostics', 'rendererDiagnostics', 'ignoredSpellingOccurrences', 'ignoredSpellingWords', 'foldedStarts', 'foldProjection']) tab[key] = state[key];
+  const selection = sourceSelectionFromView();
+  tab.selectionStart = selection.start;
+  tab.selectionEnd = selection.end;
+  tab.scrollTop = els.editor.scrollTop;
+  tab.scrollLeft = els.editor.scrollLeft;
+}
+
+function renderDocumentTabs() {
+  if (!els?.documentTabs) return;
+  els.documentTabs.innerHTML = documentTabs.map(tab => `
+    <button class="document-tab${tab.id === activeTabId ? ' active' : ''}" type="button" role="tab" aria-selected="${tab.id === activeTabId}" data-tab-id="${tab.id}">
+      <span class="tab-dirty">${isDocumentDirty(tab) ? '●' : ''}</span><span>${escapeHtml(tab.filename)}</span>
+      ${documentTabs.length > 1 ? `<span class="tab-close" role="button" aria-label="Close ${escapeHtml(tab.filename)}" data-close-tab="${tab.id}">×</span>` : ''}
+    </button>`).join('');
+}
+
+function activateDocumentTab(id, { render = true } = {}) {
+  if (id === activeTabId) return;
+  syncActiveDocument();
+  const tab = documentTabs.find(item => item.id === id);
+  if (!tab) return;
+  state.renderSeq += 1;
+  activeTabId = tab.id;
+  for (const key of ['svg', 'filename', 'fileHandle', 'savedSource', 'isNewFile', 'lastSuccessfulSource', 'sourceNavigationIndex', 'svgSourceLineOffset', 'localDiagnostics', 'rendererDiagnostics', 'ignoredSpellingOccurrences', 'ignoredSpellingWords', 'foldedStarts', 'foldProjection']) state[key] = tab[key];
+  state.source = tab.source;
+  state.foldProjection = buildFoldProjection(tab.source, state.foldedStarts);
+  els.editor.value = state.foldProjection.text;
+  const start = sourceOffsetToViewOffset(state.source, state.foldProjection, tab.selectionStart);
+  const end = sourceOffsetToViewOffset(state.source, state.foldProjection, tab.selectionEnd);
+  els.editor.setSelectionRange(start, end);
+  els.editor.scrollTop = tab.scrollTop;
+  els.editor.scrollLeft = tab.scrollLeft;
+  editHistory.reset();
+  if (tab.svg) {
+    els.previewCanvas.innerHTML = tab.svg;
+    prepareSvg();
+    els.renderStatus.textContent = 'Active tab rendering restored';
+  } else {
+    els.previewCanvas.innerHTML = '<div class="empty-state"><p>Rendering active tab…</p></div>';
+  }
+  updateEditorMeta();
+  renderDiagnostics();
+  renderDocumentTabs();
+  sendDetachedPreviewState();
+  if (render) doRender();
+}
+
+function addDocumentTab(source, filename, options = {}) {
+  syncActiveDocument();
+  const tab = createDocumentTab(source, filename, options);
+  documentTabs.push(tab);
+  const previous = activeTabId;
+  activeTabId = previous;
+  activateDocumentTab(tab.id);
+  if (options.selectionStart != null) {
+    tab.selectionStart = options.selectionStart;
+    tab.selectionEnd = options.selectionEnd;
+    els.editor.setSelectionRange(tab.selectionStart, tab.selectionEnd);
+    syncActiveDocument();
+  }
+  return tab;
+}
+
+function closeDocumentTab(id) {
+  if (documentTabs.length === 1) return;
+  const index = documentTabs.findIndex(tab => tab.id === id);
+  if (index < 0) return;
+  const wasActive = id === activeTabId;
+  documentTabs.splice(index, 1);
+  if (wasActive) {
+    activeTabId = '';
+    activateDocumentTab(documentTabs[Math.max(0, index - 1)].id);
+  } else renderDocumentTabs();
 }
 
 function sourceSelectionFromView() {
@@ -730,6 +858,7 @@ async function doRender() {
   }
 
   const seq = ++state.renderSeq;
+  const renderTabId = activeTabId;
   state.rendering = true;
   els.renderStatus.textContent = state.svg ? 'Validating changes…' : 'Rendering…';
   document.querySelector('#renderBtn').disabled = true;
@@ -738,7 +867,7 @@ async function doRender() {
     // Render into memory first. The preview is only replaced after the result
     // is confirmed not to be PlantUML's syntax-error SVG.
     const candidateSvg = await renderPlantUml(source, { dark: state.dark });
-    if (seq !== state.renderSeq) return false;
+    if (seq !== state.renderSeq || renderTabId !== activeTabId) return false;
 
     const svgError = extractSvgRenderError(candidateSvg);
     if (svgError) {
@@ -765,6 +894,8 @@ async function doRender() {
     hideError();
     els.renderStatus.textContent = 'Rendered locally';
     renderDiagnostics();
+    syncActiveDocument();
+    renderDocumentTabs();
     sendDetachedPreviewState();
     return true;
   } catch (error) {
@@ -795,6 +926,143 @@ function prepareSvg() {
   svg.style.height = 'auto';
   decorateSvgNavigation(svg);
   applyZoom();
+  requestAnimationFrame(refreshSelectionViewer);
+  requestAnimationFrame(() => followEditorInPreview({ behavior: 'auto', notifyDetached: false }));
+}
+
+function clearSelectionViewer() {
+  els.previewCanvas.querySelectorAll('.source-selection-overlay, .source-selection-screen-overlay, .source-selection-overlays').forEach(node => node.remove());
+  els.selectionActions.hidden = true;
+}
+
+function selectedSourceLineRange() {
+  const selection = sourceSelectionFromView();
+  if (selection.start === selection.end) return null;
+  const before = state.source.slice(0, selection.start).replace(/\r\n?/g, '\n');
+  const selected = state.source.slice(selection.start, selection.end).replace(/\r\n?/g, '\n');
+  const startLine = before.split('\n').length;
+  return { ...selection, startLine, endLine: startLine + selected.split('\n').length - 1 };
+}
+
+function currentEditingRecord() {
+  const index = state.sourceNavigationIndex;
+  if (!index) return null;
+  const selection = sourceSelectionFromView();
+  return navigationRecordForLine(index, sourceLineAtOffset(state.source, selection.start));
+}
+
+let followEditorTimer = null;
+function followEditorInPreview({ behavior = 'smooth', notifyDetached = true } = {}) {
+  clearTimeout(followEditorTimer);
+  const record = currentEditingRecord();
+  if (!record) return;
+  const nodes = [...els.previewCanvas.querySelectorAll('[data-source-nav-id]')]
+    .filter(node => node.dataset.sourceNavId === record.id);
+  const node = nodes
+    .map(candidate => ({ candidate, rect: candidate.getBoundingClientRect() }))
+    .filter(item => item.rect.width > 1 && item.rect.height > 1)
+    .sort((left, right) => left.rect.width * left.rect.height - right.rect.width * right.rect.height)[0]?.candidate;
+  if (node && !els.workspace.classList.contains('detached-preview-active')) {
+    const viewport = els.previewViewport.getBoundingClientRect();
+    const bounds = node.getBoundingClientRect();
+    els.previewViewport.scrollTo({
+      left: els.previewViewport.scrollLeft + bounds.left - viewport.left - (viewport.width - bounds.width) / 2,
+      top: els.previewViewport.scrollTop + bounds.top - viewport.top - (viewport.height - bounds.height) / 2,
+      behavior
+    });
+  }
+  if (notifyDetached) sendDetachedPreviewMessage(detachedPreviewAction('detached-preview-focus', 'all', { recordId: record.id }));
+}
+
+function scheduleFollowEditor() {
+  clearTimeout(followEditorTimer);
+  followEditorTimer = setTimeout(() => followEditorInPreview(), 80);
+}
+
+function refreshSelectionViewer() {
+  clearSelectionViewer();
+  const range = selectedSourceLineRange();
+  const index = state.sourceNavigationIndex;
+  const svg = els.previewCanvas.querySelector('svg');
+  sendDetachedPreviewState();
+  if (!range || !index || !svg) return;
+  const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  layer.classList.add('source-selection-overlays');
+  const bestByRecord = new Map();
+  for (const node of els.previewCanvas.querySelectorAll('[data-source-nav-id]')) {
+    const record = index.byId.get(node.dataset.sourceNavId);
+    if (!record || record.line < range.startLine || record.line > range.endLine) continue;
+    let box;
+    try { box = node.getBBox(); } catch { continue; }
+    if (box.width < 2 || box.height < 2) continue;
+    const matrix = node.getCTM();
+    const points = [
+      new DOMPoint(box.x, box.y), new DOMPoint(box.x + box.width, box.y),
+      new DOMPoint(box.x, box.y + box.height), new DOMPoint(box.x + box.width, box.y + box.height)
+    ].map(point => matrix ? point.matrixTransform(matrix) : point);
+    const left = Math.min(...points.map(point => point.x));
+    const top = Math.min(...points.map(point => point.y));
+    const right = Math.max(...points.map(point => point.x));
+    const bottom = Math.max(...points.map(point => point.y));
+    const classes = node.getAttribute('class') || '';
+    const hasNativeLine = SVG_LINE_ATTRIBUTES.some(name => node.hasAttribute(name));
+    const semanticGroup = node.tagName.toLowerCase() === 'g' && /message|participant|entity|class|component|actor|node|cluster|state|object|usecase|note|group|divider|delay/i.test(classes);
+    const rank = hasNativeLine ? 100 : semanticGroup ? 80 : node.tagName.toLowerCase() === 'text' ? 40 : 10;
+    const screen = node.getBoundingClientRect();
+    const candidate = {
+      left, top, right, bottom, rank, area: (right - left) * (bottom - top),
+      screenLeft: screen.left, screenTop: screen.top, screenRight: screen.right, screenBottom: screen.bottom
+    };
+    const current = bestByRecord.get(record.id);
+    if (!current || candidate.rank > current.rank || (candidate.rank === current.rank && candidate.area > current.area)) bestByRecord.set(record.id, candidate);
+  }
+  const bounds = [...bestByRecord.values()];
+  if (!bounds.length) return;
+  const left = Math.min(...bounds.map(item => item.left));
+  const top = Math.min(...bounds.map(item => item.top));
+  const right = Math.max(...bounds.map(item => item.right));
+  const bottom = Math.max(...bounds.map(item => item.bottom));
+  const viewBox = svg.viewBox?.baseVal;
+  const paddedLeft = viewBox?.width ? Math.max(viewBox.x, left - 8) : left - 8;
+  const paddedTop = viewBox?.height ? Math.max(viewBox.y, top - 7) : top - 7;
+  const paddedRight = viewBox?.width ? Math.min(viewBox.x + viewBox.width, right + 8) : right + 8;
+  const paddedBottom = viewBox?.height ? Math.min(viewBox.y + viewBox.height, bottom + 7) : bottom + 7;
+  const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  overlay.classList.add('source-selection-overlay');
+  overlay.setAttribute('x', String(paddedLeft));
+  overlay.setAttribute('y', String(paddedTop));
+  overlay.setAttribute('width', String(Math.max(1, paddedRight - paddedLeft)));
+  overlay.setAttribute('height', String(Math.max(1, paddedBottom - paddedTop)));
+  overlay.setAttribute('rx', '7');
+  overlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
+  layer.appendChild(overlay);
+  svg.appendChild(layer);
+
+  const canvasRect = els.previewCanvas.getBoundingClientRect();
+  const screenLeft = Math.min(...bounds.map(item => item.screenLeft));
+  const screenTop = Math.min(...bounds.map(item => item.screenTop));
+  const screenRight = Math.max(...bounds.map(item => item.screenRight));
+  const screenBottom = Math.max(...bounds.map(item => item.screenBottom));
+  const screenOverlay = document.createElement('div');
+  screenOverlay.className = 'source-selection-screen-overlay';
+  screenOverlay.style.left = `${screenLeft - canvasRect.left - 7}px`;
+  screenOverlay.style.top = `${screenTop - canvasRect.top - 6}px`;
+  screenOverlay.style.width = `${Math.max(1, screenRight - screenLeft + 14)}px`;
+  screenOverlay.style.height = `${Math.max(1, screenBottom - screenTop + 12)}px`;
+  screenOverlay.addEventListener('pointerenter', () => { els.selectionActions.hidden = false; });
+  els.previewCanvas.appendChild(screenOverlay);
+}
+
+function openSelectionInNewTab() {
+  const range = selectedSourceLineRange();
+  if (!range) return;
+  const extracted = sourceForSelection(state.source, range.start, range.end, state.sourceNavigationIndex);
+  if (!extracted) return;
+  addDocumentTab(extracted.source, `${baseName()}-selection.puml`, {
+    isNew: true,
+    selectionStart: extracted.selectionStart,
+    selectionEnd: extracted.selectionEnd
+  });
 }
 
 const SVG_LINE_ATTRIBUTES = ['data-source-line', 'data-line', 'data-line-number', 'data-sourceLine'];
@@ -996,6 +1264,51 @@ function navigateFromDiagram(event) {
   event.preventDefault();
   event.stopPropagation();
   return navigateToDiagramRecord(renderedRecord);
+}
+
+let arrowActivationRecord = null;
+
+function closeArrowActionMenu() {
+  els.arrowActionMenu.hidden = true;
+  arrowActivationRecord = null;
+}
+
+function arrowActivationForRecord(record) {
+  const current = relocateNavigationTarget(record, canonicalSource()) || record;
+  return sequenceActivationAction(canonicalSource(), buildSourceNavigationIndex(canonicalSource()), current);
+}
+
+function showArrowActionMenu(event, record) {
+  const action = arrowActivationForRecord(record);
+  if (!action) return closeArrowActionMenu();
+  event.preventDefault();
+  event.stopPropagation();
+  arrowActivationRecord = record;
+  els.arrowActionTitle.textContent = describeNavigationRecord(record);
+  els.arrowActivationBtn.textContent = action.label;
+  const viewport = els.previewViewport.getBoundingClientRect();
+  els.arrowActionMenu.style.left = `${Math.min(viewport.width - 210, Math.max(10, event.clientX - viewport.left))}px`;
+  els.arrowActionMenu.style.top = `${Math.min(viewport.height - 100, Math.max(10, event.clientY - viewport.top))}px`;
+  els.arrowActionMenu.hidden = false;
+}
+
+function applyArrowActivation(record) {
+  const action = arrowActivationForRecord(record);
+  if (!action) return false;
+  const source = canonicalSource();
+  const updated = applySequenceActivation(source, action);
+  if (updated === source) return false;
+  editHistory.checkpoint();
+  unfoldAllPreserveCaret();
+  els.editor.value = updated;
+  state.source = updated;
+  state.foldProjection = buildFoldProjection(updated, state.foldedStarts);
+  editHistory.checkpoint();
+  state.rendererDiagnostics = [];
+  updateEditorMeta();
+  scheduleRender();
+  els.renderStatus.textContent = `${action.label} applied`;
+  return true;
 }
 
 function applyZoom() {
@@ -1234,6 +1547,8 @@ function updateFileStatus() {
   els.fileStatus.classList.toggle('unsaved', dirty);
   els.fileStatus.classList.toggle('saved', !dirty);
   document.title = `${dirty ? '● ' : ''}${state.filename || 'diagram.puml'} • PlantUML Local Studio`;
+  syncActiveDocument();
+  renderDocumentTabs();
   sendDetachedPreviewState();
 }
 
@@ -1369,7 +1684,7 @@ async function saveSourceAs() {
   }
 }
 
-async function openSourceFile() {
+async function openSourceFile(inNewTab = false) {
   try {
     if ('showOpenFilePicker' in window) {
       const [handle] = await window.showOpenFilePicker({
@@ -1377,9 +1692,12 @@ async function openSourceFile() {
         types: [{ description: 'PlantUML source', accept: { 'text/plain': ['.puml', '.plantuml', '.pu', '.txt'] } }]
       });
       const file = await handle.getFile();
-      replaceSource(await file.text(), file.name, { fileHandle: handle, saved: true });
+      const source = await file.text();
+      if (inNewTab) addDocumentTab(source, file.name, { fileHandle: handle, saved: true });
+      else replaceSource(source, file.name, { fileHandle: handle, saved: true });
       return;
     }
+    openFileInNewTab = inNewTab;
     els.fileInput.click();
   } catch (error) {
     if (error?.name !== 'AbortError') showError(`Open failed. ${error?.message || error}`);
@@ -1451,6 +1769,7 @@ const autocomplete = createAutocomplete({
   textarea: els.editor,
   host: document.querySelector('.editor-wrap'),
   enabled: state.autocomplete,
+  shortcutHint: shortcutLabel('Alt+Space'),
   onBeforeChange: () => editHistory.checkpoint(),
   onChange: () => {
     editHistory.checkpoint();
@@ -1541,7 +1860,7 @@ els.editor.addEventListener('keydown', event => {
   const editingKey = event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key === 'Tab' || (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey);
   if (editingKey && hasCollapsedFolds()) unfoldAllPreserveCaret();
   if (colorPicker.handleKeydown(event)) return;
-  if ((event.ctrlKey || event.metaKey) && event.code === 'Space') colorPicker.close();
+  if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'Space') colorPicker.close();
   if (autocomplete.handleKeydown(event)) return;
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
@@ -1603,8 +1922,9 @@ els.unfoldAllBtn.addEventListener('click', () => {
   unfoldAllPreserveCaret();
   els.renderStatus.textContent = count ? 'All blocks expanded' : 'No blocks are collapsed';
 });
-document.querySelector('#newBtn').addEventListener('click', () => replaceSource('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
-document.querySelector('#openBtn').addEventListener('click', openSourceFile);
+document.querySelector('#newBtn').addEventListener('click', () => addDocumentTab('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
+document.querySelector('#openBtn').addEventListener('click', () => openSourceFile(false));
+document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
 document.querySelector('#saveAsBtn').addEventListener('click', saveSourceAs);
 document.querySelector('#quickSaveBtn').addEventListener('click', () => saveSource());
@@ -1824,9 +2144,25 @@ els.fileInput.addEventListener('change', async () => {
   const file = els.fileInput.files?.[0];
   if (!file) return;
   const text = await file.text();
-  replaceSource(text, file.name, { saved: true });
+  if (openFileInNewTab) addDocumentTab(text, file.name, { saved: true });
+  else replaceSource(text, file.name, { saved: true });
+  openFileInNewTab = false;
   els.fileInput.value = '';
 });
+
+els.documentTabs.addEventListener('click', event => {
+  const close = event.target.closest('[data-close-tab]');
+  if (close) {
+    event.stopPropagation();
+    closeDocumentTab(close.dataset.closeTab);
+    return;
+  }
+  const tab = event.target.closest('[data-tab-id]');
+  if (tab) activateDocumentTab(tab.dataset.tabId);
+});
+els.selectionOpenTabBtn.addEventListener('click', openSelectionInNewTab);
+for (const eventName of ['select', 'keyup', 'mouseup']) els.editor.addEventListener(eventName, () => requestAnimationFrame(refreshSelectionViewer));
+for (const eventName of ['input', 'select', 'keyup', 'mouseup', 'click']) els.editor.addEventListener(eventName, scheduleFollowEditor);
 
 let quickEditRecord = null;
 let quickEditTimer = null;
@@ -1895,6 +2231,14 @@ els.objectQuickEdit.addEventListener('pointerenter', () => clearTimeout(quickEdi
 els.objectQuickEdit.addEventListener('pointerleave', () => { quickEditTimer = setTimeout(closeObjectQuickEdit, 300); });
 
 els.previewCanvas.addEventListener('click', navigateFromDiagram);
+els.previewCanvas.addEventListener('contextmenu', event => {
+  const record = renderedNavigationRecordFromEvent(event);
+  if (record?.type === 'relationship') showArrowActionMenu(event, record);
+});
+els.arrowActivationBtn.addEventListener('click', () => {
+  if (arrowActivationRecord) applyArrowActivation(arrowActivationRecord);
+  closeArrowActionMenu();
+});
 els.previewCanvas.addEventListener('pointerover', event => {
   const record = renderedNavigationRecordFromEvent(event);
   if (!record) return;
@@ -1919,18 +2263,25 @@ els.previewViewport.addEventListener('wheel', event => {
 }, { passive: false });
 
 window.addEventListener('resize', () => {
+  closeArrowActionMenu();
   applyProblemsHeight(state.problemsHeight);
   applyZoom();
 });
 
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.arrow-action-menu')) closeArrowActionMenu();
+});
+
 window.addEventListener('beforeunload', event => {
-  if (!isSourceDirty()) return;
+  syncActiveDocument();
+  if (!documentTabs.some(isDocumentDirty)) return;
   event.preventDefault();
   event.returnValue = '';
 });
 
 async function init() {
   try {
+    renderDocumentTabs();
     els.renderStatus.textContent = 'Loading Viz.js…';
     await loadClassicScript(vizGlobalUrl);
     els.renderStatus.textContent = 'Engine ready';
