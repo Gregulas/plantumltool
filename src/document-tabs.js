@@ -38,6 +38,43 @@ function lineRange(source, start, end) {
   return { lines, startLine, endLine };
 }
 
+function definitionContextLines(lines, declarations, references, beforeLine) {
+  const included = new Set();
+  const boxes = [];
+  const boxStack = [];
+  let styleBlock = null;
+  for (let index = 0; index < beforeLine - 1; index += 1) {
+    const trimmed = lines[index].trim();
+    if (styleBlock != null) {
+      included.add(index);
+      if (/^<\/style>/i.test(trimmed) || (styleBlock === 'skinparam' && trimmed === '}')) styleBlock = null;
+      continue;
+    }
+    if (/^<style>/i.test(trimmed)) {
+      styleBlock = 'style';
+      included.add(index);
+    } else if (/^skinparam\b.*\{\s*$/i.test(trimmed)) {
+      styleBlock = 'skinparam';
+      included.add(index);
+    } else if (/^(?:!include|!theme|!define|skinparam\b|hide\b|show\b|autonumber\b|scale\b)/i.test(trimmed)) {
+      included.add(index);
+    }
+    if (/^box\b/i.test(trimmed)) boxStack.push(index);
+    else if (/^end\s+box\b/i.test(trimmed) && boxStack.length) boxes.push({ start: boxStack.pop(), end: index });
+  }
+
+  for (const record of declarations.filter(item => references.has(item.reference) && item.line < beforeLine)) {
+    const index = record.line - 1;
+    included.add(index);
+    const box = boxes.find(item => index > item.start && index < item.end);
+    if (box) {
+      included.add(box.start);
+      included.add(box.end);
+    }
+  }
+  return [...included].sort((a, b) => a - b).map(index => lines[index]);
+}
+
 export function sourceForSelection(source, start, end, navigationIndex) {
   const text = String(source ?? '');
   const safeStart = Math.max(0, Math.min(Number(start) || 0, text.length));
@@ -61,10 +98,7 @@ export function sourceForSelection(source, start, end, navigationIndex) {
     if (token && new RegExp(`(?:^|[^A-Za-z0-9_$.-])${String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^A-Za-z0-9_$.-])`, 'i').test(selectedText)) references.add(declaration.reference);
   }
 
-  const definitionLines = declarations
-    .filter(record => references.has(record.reference) && (record.line < startLine || record.line > endLine))
-    .sort((a, b) => a.line - b.line)
-    .map(record => record.statement.trimEnd());
+  const definitionLines = definitionContextLines(lines, declarations, references, startLine);
   const prefix = ['@startuml', ...definitionLines];
   if (definitionLines.length) prefix.push('');
   const output = [...prefix, selectedText, '@enduml'].join('\n');
