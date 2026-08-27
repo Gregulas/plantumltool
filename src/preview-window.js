@@ -21,12 +21,6 @@ document.querySelector('#previewApp').innerHTML = `
       </div>
     </header>
     <main id="detachedViewport"><div id="detachedCanvas"><div class="waiting"><strong>Waiting for the editor…</strong><span>Keep the PlantUML Studio editor window open.</span></div></div></main>
-    <form id="detachedQuickEdit" class="detached-quick-edit" hidden>
-      <div><strong id="detachedQuickEditTitle">Quick edit</strong><button id="detachedQuickEditClose" type="button" aria-label="Close quick edit">×</button></div>
-      <label>Color <input id="detachedQuickEditColor" type="text" placeholder="#32BCBB or #LightBlue" /></label>
-      <label>Style / stereotype <input id="detachedQuickEditStyle" type="text" placeholder="service" /></label>
-      <div class="detached-quick-edit-actions"><button id="detachedQuickEditReset" type="button">Clear</button><button type="submit">Apply</button></div>
-    </form>
     <div id="detachedSelectionActions" class="detached-selection-actions" hidden><strong>Selected script</strong><button id="detachedSelectionOpenTab" type="button">Open in new tab</button></div>
     <div id="detachedArrowAction" class="detached-arrow-action" hidden><strong id="detachedArrowActionTitle">Sequence call</strong><button id="detachedArrowActivationBtn" type="button">Activate action</button></div>
     <footer><span id="detachedStatus">Connecting…</span><span>PlantUML Studio ${APP_VERSION}</span></footer>
@@ -36,9 +30,7 @@ document.querySelector('#previewApp').innerHTML = `
 const els = {
   viewport: document.querySelector('#detachedViewport'), canvas: document.querySelector('#detachedCanvas'),
   filename: document.querySelector('#detachedFilename'), status: document.querySelector('#detachedStatus'),
-  zoomReset: document.querySelector('#zoomReset'), windowSize: document.querySelector('#windowSize'),
-  quickEdit: document.querySelector('#detachedQuickEdit'), quickEditTitle: document.querySelector('#detachedQuickEditTitle'),
-  quickEditColor: document.querySelector('#detachedQuickEditColor'), quickEditStyle: document.querySelector('#detachedQuickEditStyle')
+  zoomReset: document.querySelector('#zoomReset'), windowSize: document.querySelector('#windowSize')
 };
 let zoom = 1;
 let currentMessage = null;
@@ -46,9 +38,6 @@ const previewId = crypto.randomUUID?.() || `preview-${Date.now()}-${Math.random(
 let maximized = false;
 let resizingProgrammatically = false;
 let restoreBounds = null;
-let quickEditRecordId = null;
-let quickEditTimer = null;
-let quickEditPoint = null;
 let activationRecordId = null;
 let activationPoint = null;
 
@@ -117,12 +106,6 @@ function sendAction(type, payload = {}) {
   else window.opener?.postMessage(message, location.origin);
 }
 
-function closeQuickEdit() {
-  clearTimeout(quickEditTimer);
-  els.quickEdit.hidden = true;
-  quickEditRecordId = null;
-}
-
 function receiveAction(message) {
   if (message.previewId !== previewId && message.previewId !== 'all') return;
   if (isDetachedPreviewAction(message, 'detached-preview-focus')) {
@@ -140,15 +123,6 @@ function receiveAction(message) {
     menu.hidden = false;
     return;
   }
-  if (!isDetachedPreviewAction(message, 'detached-preview-quick-edit-data')) return;
-  quickEditRecordId = message.recordId;
-  els.quickEditTitle.textContent = `Quick edit • ${message.title || 'diagram object'}`;
-  els.quickEditColor.value = message.color || '';
-  els.quickEditStyle.value = message.style || '';
-  const point = quickEditPoint || { x: 80, y: 80 };
-  els.quickEdit.style.left = `${Math.min(window.innerWidth - 292, Math.max(12, point.x + 14))}px`;
-  els.quickEdit.style.top = `${Math.min(window.innerHeight - 220, Math.max(62, point.y + 14))}px`;
-  els.quickEdit.hidden = false;
 }
 
 function applyZoom() {
@@ -280,25 +254,13 @@ els.canvas.addEventListener('pointerover', event => {
   }
   const marked = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
   if (!marked) return;
-  clearTimeout(quickEditTimer);
-  quickEditPoint = { x: event.clientX, y: event.clientY };
-  quickEditTimer = setTimeout(() => sendAction('detached-preview-quick-edit-request', { recordId: marked.dataset.sourceNavId }), 450);
+  els.status.textContent = 'Click to locate this element in the editor';
 });
 els.canvas.addEventListener('pointerout', event => {
   const from = event.target instanceof Element ? event.target.closest('[data-source-nav-id]') : null;
   const to = event.relatedTarget instanceof Element ? event.relatedTarget.closest('[data-source-nav-id]') : null;
   if (from && from === to) return;
-  clearTimeout(quickEditTimer);
 });
-els.quickEdit.addEventListener('submit', event => {
-  event.preventDefault();
-  if (!quickEditRecordId) return;
-  sendAction('detached-preview-quick-edit-apply', { recordId: quickEditRecordId, color: els.quickEditColor.value, style: els.quickEditStyle.value });
-  els.status.textContent = 'Object appearance update sent to editor';
-  closeQuickEdit();
-});
-document.querySelector('#detachedQuickEditClose').addEventListener('click', closeQuickEdit);
-document.querySelector('#detachedQuickEditReset').addEventListener('click', () => { els.quickEditColor.value = ''; els.quickEditStyle.value = ''; });
 document.querySelector('#detachedSelectionOpenTab').addEventListener('click', () => {
   sendAction('detached-preview-open-selection-tab');
   document.querySelector('#detachedSelectionActions').hidden = true;
