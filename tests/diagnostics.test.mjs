@@ -94,6 +94,30 @@ Portal -> Loan: Create application
   assert.equal(missing.severity, 'warning');
   assert.equal(missing.source, 'semantic');
   assert.equal(missing.line, 3);
+  assert.equal(missing.fix.label, 'Declare Loan');
+  assert.match(missing.fix.text, /participant Loan/);
+});
+
+test('suggests correcting a missing reference that closely matches a declaration', () => {
+  const source = '@startuml\nparticipant Portal\nparticipant Loan\nPortal -> Laon: Request\n@enduml';
+  const missing = analyzePlantUml(source).find(item => item.message.includes('Laon'));
+  assert.equal(missing.fix.label, 'Change to Loan');
+  assert.equal(source.slice(missing.fix.start, missing.fix.end), 'Laon');
+  assert.equal(missing.fix.text, 'Loan');
+});
+
+test('renderer syntax errors reuse a matching local fix when available', () => {
+  const source = '@startuml\n:Review application\n@enduml';
+  const diagnostic = rendererDiagnostic('Syntax Error at line 2', source);
+  assert.equal(diagnostic.fix.label, 'Add ;');
+  assert.equal(diagnostic.fix.text, ';');
+});
+
+test('renderer syntax errors offer a reversible fallback for unknown syntax', () => {
+  const source = '@startuml\nthis is not valid ???\n@enduml';
+  const diagnostic = rendererDiagnostic('Syntax Error at line 2', source);
+  assert.equal(diagnostic.fix.label, 'Comment out line 2');
+  assert.equal(diagnostic.fix.text, "' ");
 });
 
 test('does not warn when a referenced element is declared later in the script', () => {
