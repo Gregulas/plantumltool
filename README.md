@@ -60,7 +60,7 @@ A local JavaScript PlantUML editor and renderer with PlantUML-aware autocomplete
 - Caret/selection and editor scroll position are preserved while live diagnostics/rendering update in the background
 - `Enter` keeps the current line indentation instead of resetting the caret to column 1
 - Keyboard shortcuts:
-  - `Ctrl/Cmd + Space`: open autocomplete
+  - `Ctrl + Space` on Windows/Linux or `Option + Space` on macOS: open autocomplete
   - `Arrow Up/Down`: navigate autocomplete suggestions
   - `Enter` or `Tab`: insert the selected suggestion while autocomplete is open
   - `Enter`: otherwise create a new line and preserve the current indentation
