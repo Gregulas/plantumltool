@@ -27,5 +27,5 @@ test('maps alternate shortcuts by physical key code', () => {
 test('ignores keys without Ctrl or Command and documents every action', () => {
   assert.equal(shortcutAction(event('+', { ctrlKey: false })), null);
   assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 30);
-  assert.ok(SHORTCUT_GROUPS.some(group => group.items.some(item => item[0] === 'Show suggestions' && item[1] === 'Alt+Space')));
+  assert.ok(SHORTCUT_GROUPS.some(group => group.items.some(item => item[0] === 'Show suggestions' && item[1] === 'Autocomplete')));
 });
