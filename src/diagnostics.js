@@ -99,6 +99,12 @@ function makeDeleteFix(label, start, end) {
   return { label, start, end, text: '' };
 }
 
+function makeDeleteLineFix(label, lines, offsets, index) {
+  const start = offsets[index];
+  const end = index < lines.length - 1 ? offsets[index + 1] : start + lines[index].length;
+  return makeDeleteFix(label, start, end);
+}
+
 function expectedDiagramEnd(startToken) {
   return startToken.replace(/^@start/i, '@end');
 }
@@ -302,7 +308,8 @@ function analyzeBlocks(lines, offsets, diagnostics) {
       else diagnostics.push(diag({
         line: lineNo,
         message: 'end has no matching sequence block.',
-        suggestion: 'Use end only to close alt, opt, loop, par, break, critical, or group. If this closes a participant box, use end box instead.'
+        suggestion: 'Remove this unmatched end. If it was intended to close a participant box, replace it manually with end box.',
+        fix: makeDeleteLineFix('Remove unmatched end', lines, offsets, index)
       }));
     }
 
@@ -312,20 +319,21 @@ function analyzeBlocks(lines, offsets, diagnostics) {
       else diagnostics.push(diag({
         line: lineNo,
         message: 'end note has no matching multiline note.',
-        suggestion: 'Remove this terminator or add a multiline note block above it.'
+        suggestion: 'Remove this unmatched note terminator.',
+        fix: makeDeleteLineFix('Remove end note', lines, offsets, index)
       }));
     }
 
     if (/^legend\b/i.test(code)) legend.push({ line: lineNo });
     if (/^endlegend\b/i.test(code)) {
       if (legend.length) legend.pop();
-      else diagnostics.push(diag({ line: lineNo, message: 'endlegend has no matching legend block.', suggestion: 'Remove endlegend or add a legend block above it.' }));
+      else diagnostics.push(diag({ line: lineNo, message: 'endlegend has no matching legend block.', suggestion: 'Remove this unmatched endlegend.', fix: makeDeleteLineFix('Remove endlegend', lines, offsets, index) }));
     }
 
     if (/^ref\s+over\b/i.test(code)) reference.push({ line: lineNo });
     if (/^end\s+ref\b/i.test(code)) {
       if (reference.length) reference.pop();
-      else diagnostics.push(diag({ line: lineNo, message: 'end ref has no matching ref over block.', suggestion: 'Remove this terminator or add a ref over block above it.' }));
+      else diagnostics.push(diag({ line: lineNo, message: 'end ref has no matching ref over block.', suggestion: 'Remove this unmatched ref terminator.', fix: makeDeleteLineFix('Remove end ref', lines, offsets, index) }));
     }
   });
 
@@ -391,18 +399,22 @@ function analyzeLineRules(lines, offsets, diagnostics) {
     }
 
     if (/^[A-Za-z_$][\w$]*\s*(?:-+>|-+>>|\.\.>)\s*:\s*/.test(trimmed)) {
+      const colonIndex = code.indexOf(':');
       diagnostics.push(diag({
         line: lineNo,
         message: 'Relationship arrow is missing a target element.',
-        suggestion: 'Add the target after the arrow, for example: Portal -> Loan: Request.'
+        suggestion: 'Add a target reference after the arrow.',
+        fix: makeInsertFix('Add Target placeholder', offsets[index] + colonIndex, 'Target')
       }));
     }
 
     if (/^(?:-+>|-+>>|\.\.>)\s*[A-Za-z_$][\w$]*/.test(trimmed)) {
+      const contentStart = raw.search(/\S/);
       diagnostics.push(diag({
         line: lineNo,
         message: 'Relationship arrow is missing a source element.',
-        suggestion: 'Add the source before the arrow, for example: Portal -> Loan: Request.'
+        suggestion: 'Add a source reference before the arrow.',
+        fix: makeInsertFix('Add Source placeholder', offsets[index] + contentStart, 'Source ')
       }));
     }
   });
@@ -528,7 +540,51 @@ function additionalUsedReferences(trimmed) {
   return refs.filter(Boolean);
 }
 
-function analyzeReferences(lines, diagnostics) {
+function editDistance(left, right) {
+  const a = left.toLowerCase();
+  const b = right.toLowerCase();
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        matrix[i][j] = Math.min(matrix[i][j], matrix[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function closestDeclaredReference(reference, declarations) {
+  const ranked = [...declarations.keys()]
+    .map(candidate => ({ candidate, distance: editDistance(reference, candidate) }))
+    .sort((a, b) => a.distance - b.distance || a.candidate.localeCompare(b.candidate));
+  const closest = ranked[0];
+  const threshold = Math.max(1, Math.floor(reference.length * 0.34));
+  return closest && closest.distance <= threshold ? closest.candidate : null;
+}
+
+function referenceRange(raw, reference, lineOffset) {
+  const escaped = reference.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = raw.match(new RegExp(`(?:^|[^A-Za-z0-9_$.-])(${escaped})(?=$|[^A-Za-z0-9_$.-])`));
+  if (!match) return null;
+  const index = match.index + match[0].lastIndexOf(match[1]);
+  return { start: lineOffset + index, end: lineOffset + index + match[1].length };
+}
+
+function inferredDeclarationKind(declarations) {
+  const counts = new Map();
+  for (const declaration of declarations.values()) counts.set(declaration.kind, (counts.get(declaration.kind) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'participant';
+}
+
+function analyzeReferences(lines, offsets, diagnostics) {
   const declarations = new Map();
   const used = [];
 
@@ -547,7 +603,8 @@ function analyzeReferences(lines, diagnostics) {
             source: 'semantic',
             line: index + 1,
             message: `Reference “${ref}” is defined more than once.`,
-            suggestion: `Rename this reference or remove the duplicate declaration. The first definition is on line ${first.line}.`,
+            suggestion: `Remove this duplicate declaration. The first definition is on line ${first.line}.`,
+            fix: makeDeleteLineFix(`Remove duplicate ${ref}`, lines, offsets, index),
             detail: `Duplicate reference: ${ref}\nFirst definition (line ${first.line}): ${first.text}\nDuplicate definition (line ${index + 1}): ${trimmed}`
           }));
         } else {
@@ -558,10 +615,10 @@ function analyzeReferences(lines, diagnostics) {
     }
 
     for (const ref of relationshipReferences(trimmed)) {
-      used.push({ reference: normalizeReference(ref), line: index + 1, text: trimmed, usage: 'relationship' });
+      used.push({ reference: normalizeReference(ref), line: index + 1, text: trimmed, raw, usage: 'relationship' });
     }
     for (const ref of additionalUsedReferences(trimmed)) {
-      used.push({ reference: normalizeReference(ref), line: index + 1, text: trimmed, usage: 'statement' });
+      used.push({ reference: normalizeReference(ref), line: index + 1, text: trimmed, raw, usage: 'statement' });
     }
   });
 
@@ -574,12 +631,23 @@ function analyzeReferences(lines, diagnostics) {
     if (warned.has(key)) continue;
     warned.add(key);
 
+    const closest = closestDeclaredReference(ref, declarations);
+    const range = referenceRange(use.raw, ref, offsets[use.line - 1]);
+    const declarationKind = inferredDeclarationKind(declarations);
+    const fix = closest && range
+      ? makeReplaceFix(`Change to ${closest}`, range.start, range.end, closest)
+      : makeInsertFix(`Declare ${ref}`, offsets[use.line - 1], `${declarationKind} ${ref}\n`);
+    const suggestion = closest
+      ? `“${ref}” closely matches the declared reference “${closest}”. Replace it if this is a spelling mistake.`
+      : `Add an explicit ${declarationKind} declaration for “${ref}” before its first use.`;
+
     diagnostics.push(diag({
       severity: 'warning',
       source: 'semantic',
       line: use.line,
       message: `Reference “${ref}” is used but not defined in this script.`,
-      suggestion: `Declare “${ref}” explicitly, or check the reference spelling if it should point to an existing element.`,
+      suggestion,
+      fix,
       detail: `Undefined reference: ${ref}\nUsed on line ${use.line}: ${use.text}\nNo declaration for “${ref}” was found anywhere in the current script.`
     }));
   }
@@ -596,7 +664,7 @@ export function analyzePlantUml(source) {
   analyzeBraces(lines, offsets, diagnostics);
   analyzeBlocks(lines, offsets, diagnostics);
   analyzeLineRules(lines, offsets, diagnostics);
-  analyzeReferences(lines, diagnostics);
+  analyzeReferences(lines, offsets, diagnostics);
 
   const unique = new Map();
   for (const item of diagnostics) {
@@ -650,12 +718,30 @@ export function rendererDiagnostic(message, source, fallbackLine = null) {
     ? `Diagram is too large for browser rendering (${sizeMatch[1]} × ${sizeMatch[2]}; maximum dimension ${sizeMatch[3]}).`
     : readableRendererMessage(text, line);
 
+  let fix = null;
+  if (!isRenderLimit && line) {
+    const localFix = analyzePlantUml(source).find(item => item.fix && (item.line === line || item.line === line - 1));
+    if (localFix) {
+      fix = localFix.fix;
+      suggestion = localFix.suggestion || suggestion;
+    } else if (/syntax error|rejected the syntax|unexpected|illegal/i.test(`${text} ${readableMessage}`)) {
+      const lines = String(source ?? '').replace(/\r\n?/g, '\n').split('\n');
+      if (line >= 1 && line <= lines.length && lines[line - 1].trim()) {
+        const offsets = lineOffsets(lines);
+        const indent = lines[line - 1].match(/^\s*/)?.[0].length || 0;
+        fix = makeInsertFix(`Comment out line ${line}`, offsets[line - 1] + indent, "' ");
+        suggestion = `PlantUML could not determine a safe automatic correction. Comment out line ${line} to restore rendering, then revise that statement.`;
+      }
+    }
+  }
+
   return diag({
     source: isRenderLimit ? 'render-limit' : 'renderer',
     line,
     message: readableMessage,
     detail: text,
-    suggestion
+    suggestion,
+    fix
   });
 }
 
