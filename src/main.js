@@ -19,6 +19,7 @@ import { APP_VERSION } from './app-version.js';
 import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { autocompleteShortcutLabel, detectShortcutPlatform, formatShortcutLabel, isAutocompleteShortcut } from './shortcut-platform.js';
+import { wordCompatibleSvg } from './svg-export.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
@@ -1754,7 +1755,7 @@ async function openSourceFile(inNewTab = false) {
 
 function exportSvg() {
   if (!state.svg) return showError('Render a diagram before exporting SVG.');
-  downloadBlob(state.svg, 'image/svg+xml;charset=utf-8', `${baseName()}.svg`);
+  downloadBlob(wordCompatibleSvg(state.svg), 'image/svg+xml;charset=utf-8', `${baseName()}.svg`);
 }
 
 async function exportPng() {
