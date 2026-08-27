@@ -96,6 +96,7 @@ test('unmatched syntax terminators include an applicable fix', () => {
 test('warns for a used reference that is not declared anywhere in the script', () => {
   const source = `@startuml
 participant "Portal" as Portal
+title Application flow
 Portal -> Loan: Create application
 @enduml`;
   const diagnostics = analyzePlantUml(source);
@@ -103,9 +104,16 @@ Portal -> Loan: Create application
   assert.ok(missing);
   assert.equal(missing.severity, 'warning');
   assert.equal(missing.source, 'semantic');
-  assert.equal(missing.line, 3);
+  assert.equal(missing.line, 4);
   assert.equal(missing.fix.label, 'Declare Loan');
   assert.match(missing.fix.text, /participant Loan/);
+  assert.equal(missing.fix.start, source.indexOf('title Application flow'));
+});
+
+test('missing declaration falls back to the first use when no declaration exists', () => {
+  const source = '@startuml\nPortal -> Loan: Request\n@enduml';
+  const missing = analyzePlantUml(source).find(item => item.message.includes('Portal'));
+  assert.equal(missing.fix.start, source.indexOf('Portal -> Loan'));
 });
 
 test('suggests correcting a missing reference that closely matches a declaration', () => {
