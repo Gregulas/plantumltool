@@ -99,6 +99,12 @@ function makeDeleteFix(label, start, end) {
   return { label, start, end, text: '' };
 }
 
+function makeDeleteLineFix(label, lines, offsets, index) {
+  const start = offsets[index];
+  const end = index < lines.length - 1 ? offsets[index + 1] : start + lines[index].length;
+  return makeDeleteFix(label, start, end);
+}
+
 function expectedDiagramEnd(startToken) {
   return startToken.replace(/^@start/i, '@end');
 }
@@ -302,7 +308,8 @@ function analyzeBlocks(lines, offsets, diagnostics) {
       else diagnostics.push(diag({
         line: lineNo,
         message: 'end has no matching sequence block.',
-        suggestion: 'Use end only to close alt, opt, loop, par, break, critical, or group. If this closes a participant box, use end box instead.'
+        suggestion: 'Remove this unmatched end. If it was intended to close a participant box, replace it manually with end box.',
+        fix: makeDeleteLineFix('Remove unmatched end', lines, offsets, index)
       }));
     }
 
@@ -312,20 +319,21 @@ function analyzeBlocks(lines, offsets, diagnostics) {
       else diagnostics.push(diag({
         line: lineNo,
         message: 'end note has no matching multiline note.',
-        suggestion: 'Remove this terminator or add a multiline note block above it.'
+        suggestion: 'Remove this unmatched note terminator.',
+        fix: makeDeleteLineFix('Remove end note', lines, offsets, index)
       }));
     }
 
     if (/^legend\b/i.test(code)) legend.push({ line: lineNo });
     if (/^endlegend\b/i.test(code)) {
       if (legend.length) legend.pop();
-      else diagnostics.push(diag({ line: lineNo, message: 'endlegend has no matching legend block.', suggestion: 'Remove endlegend or add a legend block above it.' }));
+      else diagnostics.push(diag({ line: lineNo, message: 'endlegend has no matching legend block.', suggestion: 'Remove this unmatched endlegend.', fix: makeDeleteLineFix('Remove endlegend', lines, offsets, index) }));
     }
 
     if (/^ref\s+over\b/i.test(code)) reference.push({ line: lineNo });
     if (/^end\s+ref\b/i.test(code)) {
       if (reference.length) reference.pop();
-      else diagnostics.push(diag({ line: lineNo, message: 'end ref has no matching ref over block.', suggestion: 'Remove this terminator or add a ref over block above it.' }));
+      else diagnostics.push(diag({ line: lineNo, message: 'end ref has no matching ref over block.', suggestion: 'Remove this unmatched ref terminator.', fix: makeDeleteLineFix('Remove end ref', lines, offsets, index) }));
     }
   });
 
@@ -391,18 +399,22 @@ function analyzeLineRules(lines, offsets, diagnostics) {
     }
 
     if (/^[A-Za-z_$][\w$]*\s*(?:-+>|-+>>|\.\.>)\s*:\s*/.test(trimmed)) {
+      const colonIndex = code.indexOf(':');
       diagnostics.push(diag({
         line: lineNo,
         message: 'Relationship arrow is missing a target element.',
-        suggestion: 'Add the target after the arrow, for example: Portal -> Loan: Request.'
+        suggestion: 'Add a target reference after the arrow.',
+        fix: makeInsertFix('Add Target placeholder', offsets[index] + colonIndex, 'Target')
       }));
     }
 
     if (/^(?:-+>|-+>>|\.\.>)\s*[A-Za-z_$][\w$]*/.test(trimmed)) {
+      const contentStart = raw.search(/\S/);
       diagnostics.push(diag({
         line: lineNo,
         message: 'Relationship arrow is missing a source element.',
-        suggestion: 'Add the source before the arrow, for example: Portal -> Loan: Request.'
+        suggestion: 'Add a source reference before the arrow.',
+        fix: makeInsertFix('Add Source placeholder', offsets[index] + contentStart, 'Source ')
       }));
     }
   });
@@ -591,7 +603,8 @@ function analyzeReferences(lines, offsets, diagnostics) {
             source: 'semantic',
             line: index + 1,
             message: `Reference “${ref}” is defined more than once.`,
-            suggestion: `Rename this reference or remove the duplicate declaration. The first definition is on line ${first.line}.`,
+            suggestion: `Remove this duplicate declaration. The first definition is on line ${first.line}.`,
+            fix: makeDeleteLineFix(`Remove duplicate ${ref}`, lines, offsets, index),
             detail: `Duplicate reference: ${ref}\nFirst definition (line ${first.line}): ${first.text}\nDuplicate definition (line ${index + 1}): ${trimmed}`
           }));
         } else {
