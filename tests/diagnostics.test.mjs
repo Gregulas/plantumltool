@@ -44,7 +44,9 @@ test('detects activity semicolon and missing arrow endpoint', () => {
   const source = '@startuml\n:Validate request\nPortal -> : Request\n@enduml';
   const diagnostics = analyzePlantUml(source);
   assert.ok(diagnostics.some(item => item.message.includes('terminating semicolon')));
-  assert.ok(diagnostics.some(item => item.message.includes('missing a target')));
+  const missingTarget = diagnostics.find(item => item.message.includes('missing a target'));
+  assert.equal(missingTarget.fix.label, 'Add Target placeholder');
+  assert.equal(missingTarget.fix.text, 'Target');
 });
 
 
@@ -81,6 +83,14 @@ Portal -> Portal: Test
   assert.equal(duplicate.source, 'semantic');
   assert.equal(duplicate.line, 3);
   assert.match(duplicate.detail, /First definition \(line 2\)/);
+  assert.equal(duplicate.fix.label, 'Remove duplicate Portal');
+});
+
+test('unmatched syntax terminators include an applicable fix', () => {
+  for (const token of ['end', 'end note', 'endlegend', 'end ref']) {
+    const diagnostic = analyzePlantUml(`@startuml\n${token}\n@enduml`).find(item => item.line === 2);
+    assert.ok(diagnostic.fix, `${token} should have a fix`);
+  }
 });
 
 test('warns for a used reference that is not declared anywhere in the script', () => {
