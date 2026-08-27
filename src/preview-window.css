@@ -30,14 +30,6 @@ button:hover { border-color:var(--accent); }
 .detached-arrow-action[hidden] { display:none; }
 .detached-arrow-action strong { overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .detached-arrow-action button { color:white; background:var(--accent); border-color:var(--accent); }
-.detached-quick-edit { position:fixed; z-index:20; width:280px; padding:10px; display:grid; gap:9px; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 16px 38px rgba(0,0,0,.28); }
-.detached-quick-edit[hidden] { display:none; }
-.detached-quick-edit > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.detached-quick-edit > div:first-child button { min-width:28px; min-height:28px; padding:2px 7px; }
-.detached-quick-edit label { display:grid; gap:4px; color:var(--muted); font-size:10px; font-weight:700; }
-.detached-quick-edit input { width:100%; min-height:32px; padding:6px 8px; color:var(--text); background:var(--surface-2); border:1px solid var(--border); border-radius:6px; }
-.detached-quick-edit-actions { display:flex; justify-content:flex-end; gap:6px; }
-.detached-quick-edit-actions button:last-child { color:white; background:var(--accent); border-color:var(--accent); }
 .waiting { min-height:240px; display:grid; place-content:center; justify-items:center; gap:7px; color:var(--muted); text-align:center; }
 .waiting strong { color:var(--text); }
 .waiting span { font-size:12px; }
