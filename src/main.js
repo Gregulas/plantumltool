@@ -18,7 +18,7 @@ import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-na
 import { APP_VERSION } from './app-version.js';
 import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
-import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
+import { autocompleteShortcutLabel, detectShortcutPlatform, formatShortcutLabel, isAutocompleteShortcut } from './shortcut-platform.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
@@ -1500,7 +1500,7 @@ function renderDiagnostics() {
               </span>
             </button>
             ${(item.fix || item.source === 'spelling') ? `<div class="diagnostic-actions">
-              ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ ${escapeHtml(item.fix.label)}</button>` : ''}
+              ${item.fix ? `<button class="quick-fix" type="button" data-action="fix" data-id="${escapeHtml(item.id)}">⚡ Apply fix: ${escapeHtml(item.fix.label)}</button>` : ''}
               ${item.source === 'spelling' ? `<button class="diagnostic-ignore" type="button" data-action="ignore-spelling" data-id="${escapeHtml(item.id)}">Ignore</button>
               <button class="diagnostic-ignore" type="button" data-action="ignore-all-spelling" data-id="${escapeHtml(item.id)}">Ignore all</button>` : ''}
             </div>` : ''}
@@ -1646,15 +1646,19 @@ function jumpToSourceRange(sourceStart, sourceEnd = sourceStart, { line = null }
 
 function applyDiagnosticFix(item) {
   if (!item?.fix) return;
+  editHistory.checkpoint();
   unfoldAllPreserveCaret();
   const { start, end, text } = item.fix;
   if (![start, end].every(Number.isInteger)) return;
   const source = state.source;
   if (start < 0 || end < start || end > source.length) return;
   els.editor.setRangeText(text, start, end, 'end');
+  state.source = els.editor.value;
+  editHistory.checkpoint();
   state.rendererDiagnostics = [];
   updateEditorMeta();
   scheduleRender();
+  els.renderStatus.textContent = `${item.fix.label} applied`;
   els.editor.focus();
 }
 
@@ -1813,7 +1817,8 @@ const autocomplete = createAutocomplete({
   textarea: els.editor,
   host: document.querySelector('.editor-wrap'),
   enabled: state.autocomplete,
-  shortcutHint: shortcutLabel('Alt+Space'),
+  shortcutHint: autocompleteShortcutLabel(shortcutPlatform),
+  matchesShortcut: event => isAutocompleteShortcut(event, shortcutPlatform),
   onBeforeChange: () => editHistory.checkpoint(),
   onChange: () => {
     editHistory.checkpoint();
@@ -1904,7 +1909,7 @@ els.editor.addEventListener('keydown', event => {
   const editingKey = event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key === 'Tab' || (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey);
   if (editingKey && hasCollapsedFolds()) unfoldAllPreserveCaret();
   if (colorPicker.handleKeydown(event)) return;
-  if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'Space') colorPicker.close();
+  if (isAutocompleteShortcut(event, shortcutPlatform)) colorPicker.close();
   if (autocomplete.handleKeydown(event)) return;
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
