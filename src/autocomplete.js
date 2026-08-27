@@ -208,7 +208,7 @@ function caretCoordinates(textarea, position, relativeTo) {
   return { x, y };
 }
 
-export function createAutocomplete({ textarea, host, onBeforeChange, onChange, enabled = true, shortcutHint = 'Alt+Space' }) {
+export function createAutocomplete({ textarea, host, onBeforeChange, onChange, enabled = true, shortcutHint = 'Ctrl+Space', matchesShortcut }) {
   const popup = document.createElement('div');
   popup.className = 'autocomplete-popup';
   popup.hidden = true;
@@ -355,7 +355,7 @@ export function createAutocomplete({ textarea, host, onBeforeChange, onChange, e
   });
 
   function handleKeydown(event) {
-    if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'Space') {
+    if (matchesShortcut?.(event)) {
       event.preventDefault();
       open({ explicit: true });
       return true;
