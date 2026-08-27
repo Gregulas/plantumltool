@@ -584,6 +584,13 @@ function inferredDeclarationKind(declarations) {
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'participant';
 }
 
+function declarationInsertionOffset(declarations, offsets, lines, fallbackLine) {
+  const lastLine = Math.max(0, ...[...declarations.values()].map(declaration => declaration.line));
+  if (!lastLine) return offsets[fallbackLine - 1];
+  if (lastLine < lines.length) return offsets[lastLine];
+  return offsets[lastLine - 1] + lines[lastLine - 1].length;
+}
+
 function analyzeReferences(lines, offsets, diagnostics) {
   const declarations = new Map();
   const used = [];
@@ -634,12 +641,13 @@ function analyzeReferences(lines, offsets, diagnostics) {
     const closest = closestDeclaredReference(ref, declarations);
     const range = referenceRange(use.raw, ref, offsets[use.line - 1]);
     const declarationKind = inferredDeclarationKind(declarations);
+    const insertionOffset = declarationInsertionOffset(declarations, offsets, lines, use.line);
     const fix = closest && range
       ? makeReplaceFix(`Change to ${closest}`, range.start, range.end, closest)
-      : makeInsertFix(`Declare ${ref}`, offsets[use.line - 1], `${declarationKind} ${ref}\n`);
+      : makeInsertFix(`Declare ${ref}`, insertionOffset, `${declarationKind} ${ref}\n`);
     const suggestion = closest
       ? `“${ref}” closely matches the declared reference “${closest}”. Replace it if this is a spelling mistake.`
-      : `Add an explicit ${declarationKind} declaration for “${ref}” before its first use.`;
+      : `Add an explicit ${declarationKind} declaration for “${ref}” after the last existing declaration.`;
 
     diagnostics.push(diag({
       severity: 'warning',
