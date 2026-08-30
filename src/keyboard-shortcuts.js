@@ -7,6 +7,7 @@ export const SHORTCUT_GROUPS = [
   { title: 'Edit', items: [
     ['Undo', 'Ctrl/Cmd+Z'], ['Redo', 'Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z'],
     ['Show suggestions', 'Autocomplete'],
+    ['Comment/uncomment section', "Ctrl/Cmd+'"],
     ['Format script', 'Ctrl/Cmd+Shift+F'], ['Fold all', 'Ctrl/Cmd+Alt+F'],
     ['Unfold all', 'Ctrl/Cmd+Alt+U']
   ] },
@@ -44,6 +45,7 @@ export function shortcutAction(event) {
   if (key === 'n') return 'new';
   if (key === 'o') return 'open';
   if (key === 's') return event.shiftKey ? 'save-as' : 'save';
+  if ((event.code === 'Quote' || event.key === "'") && !event.shiftKey) return 'toggle-section-comment';
   if (key === 'f' && event.shiftKey) return 'format';
   if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
   if (key === 'y') return 'redo';

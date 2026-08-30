@@ -24,6 +24,7 @@ import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js'
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
 import { clearRecentFileHandles, ensureFileHandlePermission, loadRecentFileHandle, storeRecentFileHandle } from './recent-file-handles.js';
 import { loadSpellingIgnores, storeSpellingIgnores } from './spelling-ignore-store.js';
+import { toggleSectionComment } from './section-comment.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -1883,6 +1884,29 @@ function formatSource() {
   return true;
 }
 
+function toggleSelectedSectionComment() {
+  colorPicker.close();
+  autocomplete.close();
+  unfoldAllPreserveCaret();
+  const edit = toggleSectionComment(els.editor.value, els.editor.selectionStart, els.editor.selectionEnd);
+  if (!edit) {
+    els.renderStatus.textContent = 'Select a section to comment or uncomment';
+    return false;
+  }
+
+  editHistory.checkpoint();
+  els.editor.setRangeText(edit.text, edit.start, edit.end, 'end');
+  els.editor.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  state.source = els.editor.value;
+  editHistory.checkpoint();
+  state.rendererDiagnostics = [];
+  updateEditorMeta();
+  scheduleRender();
+  els.renderStatus.textContent = edit.commented ? 'Selected section commented' : 'Selected section uncommented';
+  els.editor.focus({ preventScroll: true });
+  return true;
+}
+
 els.editor.addEventListener('input', () => {
   if (!hasCollapsedFolds()) state.source = els.editor.value;
   state.rendererDiagnostics = [];
@@ -2157,6 +2181,7 @@ function runShortcut(action) {
     undo: editHistory.undo,
     redo: editHistory.redo,
     format: formatSource,
+    'toggle-section-comment': toggleSelectedSectionComment,
     render: doRender,
     'copy-svg': copySvg,
     'export-svg': exportSvg,
