@@ -1798,6 +1798,8 @@ const autocomplete = createAutocomplete({
 const colorPicker = createColorPicker({
   textarea: els.editor,
   host: document.querySelector('.editor-wrap'),
+  shortcutHint: autocompleteShortcutLabel(shortcutPlatform),
+  matchesShortcut: event => isAutocompleteShortcut(event, shortcutPlatform),
   onBeforeOpen: () => hasCollapsedFolds() ? unfoldAllPreserveCaret() : false,
   onOpen: () => autocomplete.close(),
   onChange: () => {

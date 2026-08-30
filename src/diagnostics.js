@@ -584,8 +584,47 @@ function inferredDeclarationKind(declarations) {
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'participant';
 }
 
+function declarationEndLine(lines, startIndex) {
+  let depth = 0;
+  let opened = false;
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const code = withoutComment(lines[index]);
+    let quoted = false;
+    let escaped = false;
+
+    for (const ch of code) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        quoted = !quoted;
+        continue;
+      }
+      if (quoted) continue;
+
+      if (ch === '{') {
+        opened = true;
+        depth += 1;
+      } else if (ch === '}' && opened) {
+        depth -= 1;
+        if (depth === 0) return index + 1;
+      }
+    }
+
+    if (index === startIndex && !opened) return startIndex + 1;
+  }
+
+  return startIndex + 1;
+}
+
 function declarationInsertionOffset(declarations, offsets, lines, fallbackLine) {
-  const lastLine = Math.max(0, ...[...declarations.values()].map(declaration => declaration.line));
+  const lastLine = Math.max(0, ...[...declarations.values()].map(declaration => declaration.endLine || declaration.line));
   if (!lastLine) return offsets[fallbackLine - 1];
   if (lastLine < lines.length) return offsets[lastLine];
   return offsets[lastLine - 1] + lines[lastLine - 1].length;
@@ -615,7 +654,12 @@ function analyzeReferences(lines, offsets, diagnostics) {
             detail: `Duplicate reference: ${ref}\nFirst definition (line ${first.line}): ${first.text}\nDuplicate definition (line ${index + 1}): ${trimmed}`
           }));
         } else {
-          declarations.set(ref, { line: index + 1, text: trimmed, kind: declaration.kind });
+          declarations.set(ref, {
+            line: index + 1,
+            endLine: declarationEndLine(lines, index),
+            text: trimmed,
+            kind: declaration.kind
+          });
         }
       }
       return;

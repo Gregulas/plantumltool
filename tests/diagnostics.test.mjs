@@ -116,6 +116,48 @@ test('missing declaration falls back to the first use when no declaration exists
   assert.equal(missing.fix.start, source.indexOf('Portal -> Loan'));
 });
 
+test('inserts a missing declaration after a multi-line object closing brace', () => {
+  const source = `@startuml
+state Application {
+  [*] --> Submitted
+  Submitted --> Approved
+}
+Application --> Archive
+@enduml`;
+  const missing = analyzePlantUml(source).find(item => item.message.includes('Archive') && item.message.includes('not defined'));
+  assert.ok(missing);
+  assert.equal(missing.fix.start, source.indexOf('Application --> Archive'));
+  assert.equal(missing.fix.text, 'state Archive\n');
+});
+
+test('inserts after the outer closing brace when declarations are nested', () => {
+  const source = `@startuml
+component Platform {
+  package Services {
+    component API
+  }
+}
+Platform --> Database
+@enduml`;
+  const missing = analyzePlantUml(source).find(item => item.message.includes('Database') && item.message.includes('not defined'));
+  assert.ok(missing);
+  assert.equal(missing.fix.start, source.indexOf('Platform --> Database'));
+  assert.equal(missing.fix.text, 'component Database\n');
+});
+
+test('does not associate a later unrelated brace with a one-line declaration', () => {
+  const source = `@startuml
+participant Portal
+skinparam sequence {
+  ArrowColor black
+}
+Portal --> Loan
+@enduml`;
+  const missing = analyzePlantUml(source).find(item => item.message.includes('Loan') && item.message.includes('not defined'));
+  assert.ok(missing);
+  assert.equal(missing.fix.start, source.indexOf('skinparam sequence'));
+});
+
 test('suggests correcting a missing reference that closely matches a declaration', () => {
   const source = '@startuml\nparticipant Portal\nparticipant Loan\nPortal -> Laon: Request\n@enduml';
   const missing = analyzePlantUml(source).find(item => item.message.includes('Laon'));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findColorTokenAt, normalizeColorForPicker, openNativeColorPicker } from '../src/color-picker.js';
+import { findColorTokenAt, isTypedColorTrigger, normalizeColorForPicker, openNativeColorPicker, selectedRgbColor } from '../src/color-picker.js';
 
 test('finds an actual PlantUML hex color at the caret', () => {
   const source = 'skinparam sequence {\n  ArrowColor #32BCBB\n}';
@@ -44,4 +44,24 @@ test('opens the native picker explicitly and falls back to click', () => {
 
   assert.equal(openNativeColorPicker({ showPicker() { throw new Error('unsupported'); }, click() { clicked += 1; } }), 'click');
   assert.equal(clicked, 1);
+});
+
+test('only a directly typed hash triggers automatic color picking', () => {
+  assert.equal(isTypedColorTrigger({ inputType: 'insertText', data: '#' }), true);
+  assert.equal(isTypedColorTrigger({ inputType: 'insertText', data: 'a' }), false);
+  assert.equal(isTypedColorTrigger({ inputType: 'insertFromPaste', data: '#' }), false);
+});
+
+test('recognizes only a fully selected RGB color including its hash', () => {
+  const source = 'ArrowColor #32BCBB';
+  const start = source.indexOf('#');
+  assert.deepEqual(selectedRgbColor(source, start, start + 7), {
+    start,
+    end: start + 7,
+    text: '#32BCBB',
+    pickerValue: '#32bcbb'
+  });
+  assert.equal(selectedRgbColor(source, start + 1, start + 7), null);
+  assert.equal(selectedRgbColor('Color #abc', 6, 10), null);
+  assert.equal(selectedRgbColor('Color #LightBlue', 6, 16), null);
 });
