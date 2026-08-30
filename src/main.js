@@ -23,6 +23,7 @@ import { applySequenceActivation, sequenceActivationAction } from './sequence-ac
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
 import { clearRecentFileHandles, ensureFileHandlePermission, loadRecentFileHandle, storeRecentFileHandle } from './recent-file-handles.js';
+import { loadSpellingIgnores, storeSpellingIgnores } from './spelling-ignore-store.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -663,7 +664,12 @@ function activateDocumentTab(id, { render = true, syncCurrent = true } = {}) {
 
 function addDocumentTab(source, filename, options = {}) {
   syncActiveDocument();
-  const tab = createDocumentTab(source, filename, options);
+  const spellingIgnores = options.isNew ? { occurrences: [], words: [] } : loadSpellingIgnores(localStorage, filename);
+  const tab = createDocumentTab(source, filename, {
+    ...options,
+    ignoredSpellingOccurrences: spellingIgnores.occurrences,
+    ignoredSpellingWords: spellingIgnores.words
+  });
   documentTabs.push(tab);
   const previous = activeTabId;
   activeTabId = previous;
@@ -1512,6 +1518,10 @@ function ignoreSpellingDiagnostic(item, allOccurrences = false) {
   if (item?.source !== 'spelling' || !item.word) return;
   if (allOccurrences) state.ignoredSpellingWords.add(item.word.toLowerCase());
   else if (item.ignoreKey) state.ignoredSpellingOccurrences.add(item.ignoreKey);
+  if (!state.isNewFile) storeSpellingIgnores(localStorage, state.filename, {
+    occurrences: state.ignoredSpellingOccurrences,
+    words: state.ignoredSpellingWords
+  });
   runLocalDiagnostics();
   els.renderStatus.textContent = allOccurrences
     ? `Ignored all occurrences of “${item.word}” in this diagram`
@@ -1667,6 +1677,10 @@ async function writeSourceToHandle(handle) {
   state.filename = handle.name || state.filename;
   state.savedSource = canonicalSource();
   state.isNewFile = false;
+  storeSpellingIgnores(localStorage, state.filename, {
+    occurrences: state.ignoredSpellingOccurrences,
+    words: state.ignoredSpellingWords
+  });
   updateFileStatus();
   rememberRecentFile(state.filename, canonicalSource(), handle);
   els.renderStatus.textContent = `Saved ${state.filename}`;
@@ -1818,8 +1832,9 @@ const colorPicker = createColorPicker({
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
   colorPicker.close();
-  state.ignoredSpellingOccurrences.clear();
-  state.ignoredSpellingWords.clear();
+  const spellingIgnores = saved && !isNew ? loadSpellingIgnores(localStorage, filename) : { occurrences: [], words: [] };
+  state.ignoredSpellingOccurrences = new Set(spellingIgnores.occurrences);
+  state.ignoredSpellingWords = new Set(spellingIgnores.words);
   state.source = source;
   state.foldedStarts.clear();
   state.foldProjection = buildFoldProjection(source, state.foldedStarts);
@@ -2195,6 +2210,10 @@ document.querySelector('#saveAsFallbackForm').addEventListener('submit', event =
   state.filename = filename;
   state.savedSource = canonicalSource();
   state.isNewFile = false;
+  storeSpellingIgnores(localStorage, filename, {
+    occurrences: state.ignoredSpellingOccurrences,
+    words: state.ignoredSpellingWords
+  });
   updateFileStatus();
   rememberRecentFile(filename, canonicalSource());
   saveAsDialog.close();
