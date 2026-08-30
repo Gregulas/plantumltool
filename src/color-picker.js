@@ -49,6 +49,19 @@ export function findColorTokenAt(source, position) {
   return null;
 }
 
+export function isTypedColorTrigger(event) {
+  return event?.inputType === 'insertText' && event?.data === '#';
+}
+
+export function selectedRgbColor(source, selectionStart, selectionEnd) {
+  const text = String(source ?? '');
+  const start = Math.max(0, Math.min(Number(selectionStart) || 0, text.length));
+  const end = Math.max(start, Math.min(Number(selectionEnd) || 0, text.length));
+  const selected = text.slice(start, end);
+  if (!/^#[0-9a-f]{6}$/i.test(selected)) return null;
+  return { start, end, text: selected, pickerValue: selected.toLowerCase() };
+}
+
 export function openNativeColorPicker(input) {
   if (typeof input?.showPicker === 'function') {
     try {
@@ -94,7 +107,7 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOpen, onClose }) {
+export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOpen, onClose, matchesShortcut, shortcutHint = 'Ctrl+Space' }) {
   const popup = document.createElement('div');
   popup.className = 'color-picker-popup';
   popup.hidden = true;
@@ -120,7 +133,7 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
         ${PALETTE.map(color => `<button type="button" class="color-swatch" data-color="${escapeAttr(color)}" title="${escapeAttr(color)}" style="--swatch:${escapeAttr(color)}"></button>`).join('')}
       </div>
     </div>
-    <div class="color-picker-footer">Click a swatch or open the system picker · Esc closes</div>
+    <div class="color-picker-footer">Type # or select #RRGGBB and press ${escapeAttr(shortcutHint)} · Esc closes</div>
   `;
   host.appendChild(popup);
 
@@ -164,6 +177,15 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     preview.style.background = currentValue;
   }
 
+  function showToken(token) {
+    range = token;
+    original.textContent = token.text;
+    paintValue(token.pickerValue);
+    popup.hidden = false;
+    positionPopup();
+    onOpen?.(token);
+  }
+
   function openForCaret() {
     let token = findColorTokenAt(textarea.value, textarea.selectionStart);
     if (!token) return close();
@@ -172,13 +194,22 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     // Expand first, then resolve the color range against the canonical visible source.
     if (onBeforeOpen?.()) token = findColorTokenAt(textarea.value, textarea.selectionStart);
     if (!token) return close();
+    showToken(token);
+  }
 
-    range = token;
-    original.textContent = token.text;
-    paintValue(token.pickerValue);
-    popup.hidden = false;
-    positionPopup();
-    onOpen?.(token);
+  function openForTypedHash() {
+    if (onBeforeOpen?.()) return openForTypedHash();
+    const caret = textarea.selectionStart;
+    if (caret < 1 || textarea.selectionStart !== textarea.selectionEnd || textarea.value[caret - 1] !== '#') return close();
+    showToken({ start: caret - 1, end: caret, text: '#', pickerValue: normalizeColorForPicker('') });
+  }
+
+  function openForSelectedRgb() {
+    if (onBeforeOpen?.()) return openForSelectedRgb();
+    const token = selectedRgbColor(textarea.value, textarea.selectionStart, textarea.selectionEnd);
+    if (!token) return false;
+    showToken(token);
+    return true;
   }
 
   function apply(value, { closeAfter = false, focusAfter = false } = {}) {
@@ -217,13 +248,23 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     apply(swatch.dataset.color, { closeAfter: true, focusAfter: true });
   });
 
-  textarea.addEventListener('click', () => queueMicrotask(openForCaret));
-  textarea.addEventListener('keyup', event => {
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-      queueMicrotask(openForCaret);
+  textarea.addEventListener('input', event => {
+    if (isTypedColorTrigger(event)) {
+      queueMicrotask(openForTypedHash);
+      return;
+    }
+    if (popup.hidden || !range) return;
+    const caret = textarea.selectionStart;
+    const edited = textarea.value.slice(range.start, caret);
+    if (textarea.selectionStart === textarea.selectionEnd && /^#[0-9a-f]{0,8}$/i.test(edited)) {
+      range = { ...range, end: caret, text: edited, pickerValue: normalizeColorForPicker(edited) };
+      original.textContent = edited;
+      paintValue(edited);
+      positionPopup();
+    } else {
+      close();
     }
   });
-  textarea.addEventListener('input', () => queueMicrotask(openForCaret));
   textarea.addEventListener('scroll', () => {
     if (!popup.hidden) positionPopup();
   });
@@ -239,6 +280,11 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
   });
 
   function handleKeydown(event) {
+    if (matchesShortcut?.(event) && selectedRgbColor(textarea.value, textarea.selectionStart, textarea.selectionEnd)) {
+      event.preventDefault();
+      openForSelectedRgb();
+      return true;
+    }
     if (popup.hidden) return false;
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -248,5 +294,5 @@ export function createColorPicker({ textarea, host, onChange, onBeforeOpen, onOp
     return false;
   }
 
-  return { openForCaret, close, handleKeydown, get open() { return !popup.hidden; } };
+  return { openForCaret, openForSelectedRgb, close, handleKeydown, get open() { return !popup.hidden; } };
 }
