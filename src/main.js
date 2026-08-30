@@ -19,6 +19,7 @@ import { createDocumentTab, isDocumentDirty, sourceForSelection } from './docume
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { autocompleteShortcutLabel, detectShortcutPlatform, formatShortcutLabel, isAutocompleteShortcut } from './shortcut-platform.js';
 import { wordCompatibleSvg } from './svg-export.js';
+import { installPreviewPanning } from './preview-pan.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
@@ -2302,6 +2303,8 @@ els.previewViewport.addEventListener('wheel', event => {
   event.preventDefault();
   setZoom(state.zoom + (event.deltaY < 0 ? 0.1 : -0.1));
 }, { passive: false });
+
+installPreviewPanning(els.previewViewport);
 
 window.addEventListener('resize', () => {
   closeArrowActionMenu();

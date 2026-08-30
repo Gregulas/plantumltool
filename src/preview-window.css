@@ -15,7 +15,8 @@ button { min-width:34px; min-height:34px; padding:6px 9px; color:var(--text); ba
 button:hover { border-color:var(--accent); }
 #windowSize { display:flex; align-items:center; gap:5px; }
 @media (max-width:680px) { #windowSize span,.detached-brand small { display:none; } header { padding-inline:7px; } .detached-actions { gap:3px; } }
-#detachedViewport { min-height:0; overflow:auto; background-color:var(--surface); background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px); background-size:24px 24px; }
+#detachedViewport { min-height:0; overflow:auto; background-color:var(--surface); background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px); background-size:24px 24px; cursor:grab; }
+#detachedViewport.is-grabbing,#detachedViewport.is-grabbing * { cursor:grabbing !important; user-select:none !important; }
 #detachedCanvas { position:relative; min-width:100%; min-height:100%; width:100%; height:100%; padding:32px; }
 #detachedCanvas svg { display:block; margin-inline:auto; filter:drop-shadow(0 8px 18px rgba(0,0,0,.08)); }
 #detachedCanvas .source-navigable { cursor:pointer; }

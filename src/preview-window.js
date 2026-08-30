@@ -4,6 +4,7 @@ import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewLifecyc
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { availableScreenBounds, isNearBounds } from './window-sizing.js';
 import { detectShortcutPlatform, formatShortcutLabel } from './shortcut-platform.js';
+import { installPreviewPanning } from './preview-pan.js';
 
 const shortcutPlatform = detectShortcutPlatform(navigator);
 const shortcutLabel = value => formatShortcutLabel(value, shortcutPlatform);
@@ -284,6 +285,7 @@ els.viewport.addEventListener('wheel', event => {
   event.preventDefault();
   setZoom(zoom + (event.deltaY < 0 ? .1 : -.1));
 }, { passive: false });
+installPreviewPanning(els.viewport);
 window.addEventListener('resize', () => {
   if (maximized && !resizingProgrammatically) {
     maximized = false;
