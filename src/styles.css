@@ -401,6 +401,13 @@ button.primary:hover { background: var(--accent-strong); }
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 24px 24px;
+  cursor: grab;
+}
+
+.preview-viewport.is-grabbing,
+.preview-viewport.is-grabbing * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .preview-canvas {
