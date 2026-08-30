@@ -22,6 +22,7 @@ import { wordCompatibleSvg } from './svg-export.js';
 import { applySequenceActivation, sequenceActivationAction } from './sequence-activation.js';
 import { navigationRecordForLine, sourceLineAtOffset } from './source-follow.js';
 import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-files.js';
+import { clearRecentFileHandles, ensureFileHandlePermission, loadRecentFileHandle, storeRecentFileHandle } from './recent-file-handles.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -401,6 +402,7 @@ const els = {
 };
 
 let recentFiles = loadRecentFiles();
+const recentFileHandles = new Map();
 
 function renderRecentFilesMenu() {
   els.recentFilesMenu.innerHTML = recentFiles.length
@@ -409,8 +411,12 @@ function renderRecentFilesMenu() {
   els.clearRecentFilesBtn.disabled = recentFiles.length === 0;
 }
 
-function rememberRecentFile(filename = state.filename, source = canonicalSource()) {
+function rememberRecentFile(filename = state.filename, source = canonicalSource(), fileHandle = null) {
   recentFiles = storeRecentFile(localStorage, recentFiles, { filename, source });
+  if (fileHandle) {
+    recentFileHandles.set(filename, fileHandle);
+    storeRecentFileHandle(filename, fileHandle).catch(() => {});
+  }
   renderRecentFilesMenu();
 }
 
@@ -1662,7 +1668,7 @@ async function writeSourceToHandle(handle) {
   state.savedSource = canonicalSource();
   state.isNewFile = false;
   updateFileStatus();
-  rememberRecentFile(state.filename, canonicalSource());
+  rememberRecentFile(state.filename, canonicalSource(), handle);
   els.renderStatus.textContent = `Saved ${state.filename}`;
 }
 
@@ -1707,7 +1713,7 @@ async function openSourceFile(inNewTab = false) {
       });
       const file = await handle.getFile();
       const source = await file.text();
-      rememberRecentFile(file.name, source);
+      rememberRecentFile(file.name, source, handle);
       if (inNewTab) addDocumentTab(source, file.name, { fileHandle: handle, saved: true });
       else replaceSource(source, file.name, { fileHandle: handle, saved: true });
       return;
@@ -1943,16 +1949,36 @@ els.unfoldAllBtn.addEventListener('click', () => {
 document.querySelector('#newBtn').addEventListener('click', () => addDocumentTab('@startuml\n\n@enduml', 'diagram.puml', { isNew: true }));
 document.querySelector('#openBtn').addEventListener('click', () => openSourceFile(false));
 document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
+async function openRecentFile(item) {
+  try {
+    const handle = recentFileHandles.get(item.filename) || await loadRecentFileHandle(item.filename);
+    if (handle && await ensureFileHandlePermission(handle)) {
+      const file = await handle.getFile();
+      const source = await file.text();
+      replaceSource(source, file.name || item.filename, { fileHandle: handle, saved: true });
+      rememberRecentFile(file.name || item.filename, source, handle);
+      els.renderStatus.textContent = `Opened recent file ${file.name || item.filename} with direct saving enabled`;
+      return;
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+  }
+
+  replaceSource(item.source, item.filename, { saved: true });
+  rememberRecentFile(item.filename, item.source);
+  els.renderStatus.textContent = `Opened recent snapshot ${item.filename} — reopen it once with Open to enable direct saving`;
+}
+
 els.recentFilesMenu.addEventListener('click', event => {
   const button = event.target.closest('[data-recent-file]');
   const item = button ? recentFiles[Number(button.dataset.recentFile)] : null;
   if (!item) return;
-  replaceSource(item.source, item.filename, { saved: true });
-  rememberRecentFile(item.filename, item.source);
-  els.renderStatus.textContent = `Opened recent file ${item.filename}`;
+  openRecentFile(item);
 });
 els.clearRecentFilesBtn.addEventListener('click', () => {
   recentFiles = clearRecentFiles();
+  recentFileHandles.clear();
+  clearRecentFileHandles().catch(() => {});
   renderRecentFilesMenu();
 });
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
