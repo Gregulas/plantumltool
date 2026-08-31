@@ -28,6 +28,7 @@ import { loadSpellingIgnores, storeSpellingIgnores } from './spelling-ignore-sto
 import { toggleSectionComment } from './section-comment.js';
 import { GUEST_PROFILE_ID, createUserProfile, deleteUserProfile, initializeUserProfiles, listUserProfiles, selectUserProfile } from './user-profiles.js';
 import { loadWorkspaceSession, storeWorkspaceSession } from './workspace-session.js';
+import { expandScriptShortcut } from './script-shortcuts.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -246,6 +247,7 @@ app.innerHTML = `
             <button id="redoMenuBtn" type="button"><span>Redo</span><kbd>${shortcutLabel('Ctrl/Cmd+Y')}</kbd></button>
             <div class="menu-separator"></div>
             <button id="formatBtn" type="button"><span>Format script</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+F')}</kbd></button>
+            <button id="expandScriptShortcutBtn" type="button"><span>Expand script shortcut</span><kbd>${shortcutLabel('Ctrl/Cmd+Shift+E')}</kbd></button>
             <button id="foldAllBtn" type="button"><span>Fold all blocks</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+F')}</kbd></button>
             <button id="unfoldAllBtn" type="button"><span>Unfold all blocks</span><kbd>${shortcutLabel('Ctrl/Cmd+Alt+U')}</kbd></button>
           </div>
@@ -2075,6 +2077,29 @@ function toggleSelectedSectionComment() {
   return true;
 }
 
+function expandCurrentScriptShortcut() {
+  colorPicker.close();
+  autocomplete.close();
+  unfoldAllPreserveCaret();
+  const edit = expandScriptShortcut(els.editor.value, els.editor.selectionStart, els.editor.selectionEnd);
+  if (!edit) {
+    els.renderStatus.textContent = 'No script shortcut at the caret — try: Sync caller | service';
+    return false;
+  }
+
+  editHistory.checkpoint();
+  els.editor.setRangeText(edit.text, edit.start, edit.end, 'end');
+  els.editor.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  state.source = els.editor.value;
+  editHistory.checkpoint();
+  state.rendererDiagnostics = [];
+  updateEditorMeta();
+  scheduleRender();
+  els.renderStatus.textContent = `${edit.label} expanded for ${edit.participants.length} participants`;
+  els.editor.focus({ preventScroll: true });
+  return true;
+}
+
 els.editor.addEventListener('input', () => {
   if (!hasCollapsedFolds()) state.source = els.editor.value;
   state.rendererDiagnostics = [];
@@ -2141,6 +2166,7 @@ els.editor.addEventListener('cut', () => { if (hasCollapsedFolds()) unfoldAllPre
 
 document.querySelector('#renderBtn').addEventListener('click', doRender);
 els.formatBtn.addEventListener('click', formatSource);
+document.querySelector('#expandScriptShortcutBtn').addEventListener('click', expandCurrentScriptShortcut);
 els.foldAllBtn.addEventListener('click', () => {
   state.source = canonicalSource();
   const all = buildFoldProjection(state.source, new Set()).regions;
@@ -2353,6 +2379,7 @@ function runShortcut(action) {
     redo: editHistory.redo,
     format: formatSource,
     'toggle-section-comment': toggleSelectedSectionComment,
+    'expand-script-shortcut': expandCurrentScriptShortcut,
     render: doRender,
     'copy-svg': copySvg,
     'export-svg': exportSvg,
