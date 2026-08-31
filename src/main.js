@@ -26,6 +26,8 @@ import { clearRecentFiles, loadRecentFiles, storeRecentFile } from './recent-fil
 import { clearRecentFileHandles, ensureFileHandlePermission, loadRecentFileHandle, storeRecentFileHandle } from './recent-file-handles.js';
 import { loadSpellingIgnores, storeSpellingIgnores } from './spelling-ignore-store.js';
 import { toggleSectionComment } from './section-comment.js';
+import { GUEST_PROFILE_ID, createUserProfile, deleteUserProfile, initializeUserProfiles, listUserProfiles, selectUserProfile } from './user-profiles.js';
+import { loadWorkspaceSession, storeWorkspaceSession } from './workspace-session.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -153,34 +155,59 @@ Loan --> DB : JDBC
 @enduml`
 };
 
+const profileContext = initializeUserProfiles(localStorage);
+const profileStorage = profileContext.storage;
+const recoveredWorkspace = loadWorkspaceSession(profileStorage);
+
+function restoreWorkspaceTab(item) {
+  const tab = createDocumentTab(item.source, item.filename, {
+    saved: false,
+    isNew: item.isNewFile,
+    selectionStart: item.selectionStart,
+    selectionEnd: item.selectionEnd,
+    ignoredSpellingOccurrences: item.ignoredSpellingOccurrences,
+    ignoredSpellingWords: item.ignoredSpellingWords
+  });
+  tab.savedSource = item.savedSource;
+  tab.foldedStarts = new Set(item.foldedStarts || []);
+  tab.scrollTop = item.scrollTop;
+  tab.scrollLeft = item.scrollLeft;
+  return tab;
+}
+
+const documentTabs = recoveredWorkspace?.tabs?.length
+  ? recoveredWorkspace.tabs.map(restoreWorkspaceTab)
+  : [createDocumentTab(profileStorage.getItem('plantuml-local-source') || DEFAULT_SOURCE, 'diagram.puml', { isNew: true })];
+let activeTabId = documentTabs[recoveredWorkspace?.activeIndex || 0]?.id || documentTabs[0].id;
+const initialDocument = documentTabs.find(tab => tab.id === activeTabId) || documentTabs[0];
+
 const state = {
-  source: localStorage.getItem('plantuml-local-source') || DEFAULT_SOURCE,
+  source: initialDocument.source,
   svg: '',
-  filename: 'diagram.puml',
+  filename: initialDocument.filename,
   fileHandle: null,
-  savedSource: '',
-  isNewFile: true,
+  savedSource: initialDocument.savedSource,
+  isNewFile: initialDocument.isNewFile,
   zoom: 1,
-  dark: localStorage.getItem('plantuml-local-theme') === 'dark',
-  live: localStorage.getItem('plantuml-live-render') !== 'false',
-  autocomplete: localStorage.getItem('plantuml-autocomplete') !== 'false',
+  dark: profileStorage.getItem('plantuml-local-theme') === 'dark',
+  live: profileStorage.getItem('plantuml-live-render') !== 'false',
+  autocomplete: profileStorage.getItem('plantuml-autocomplete') !== 'false',
   rendering: false,
   renderSeq: 0,
   localDiagnostics: [],
-  ignoredSpellingOccurrences: new Set(),
-  ignoredSpellingWords: new Set(),
+  ignoredSpellingOccurrences: new Set(initialDocument.ignoredSpellingOccurrences),
+  ignoredSpellingWords: new Set(initialDocument.ignoredSpellingWords),
   rendererDiagnostics: [],
   lastSuccessfulSource: '',
-  workspaceSplit: Number(localStorage.getItem('plantuml-workspace-split')) || 48,
-  problemsHeight: Number(localStorage.getItem('plantuml-problems-height')) || 190,
+  workspaceSplit: Number(profileStorage.getItem('plantuml-workspace-split')) || 48,
+  problemsHeight: Number(profileStorage.getItem('plantuml-problems-height')) || 190,
   sourceNavigationIndex: null,
   svgSourceLineOffset: 0,
-  foldedStarts: new Set(),
+  foldedStarts: new Set(initialDocument.foldedStarts),
   foldProjection: null
 };
-const documentTabs = [createDocumentTab(state.source, 'diagram.puml', { isNew: true })];
-let activeTabId = documentTabs[0].id;
 let openFileInNewTab = false;
+let workspaceSaveTimer = null;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -254,6 +281,7 @@ app.innerHTML = `
         </details>
       </nav>
       <div class="top-actions" aria-label="Quick actions">
+        <button id="profileBtn" class="profile-button" type="button" title="Manage local profiles"><span aria-hidden="true">●</span><span id="profileButtonName">${profileContext.isGuest ? 'Guest' : escapeHtml(profileContext.profile.name)}</span></button>
         <button id="undoBtn" class="icon-btn" type="button" title="Undo" aria-label="Undo">↶</button>
         <button id="redoBtn" class="icon-btn" type="button" title="Redo" aria-label="Redo">↷</button>
         <button id="quickSaveBtn" class="compact-save" type="button" title="Save">Save</button>
@@ -263,6 +291,22 @@ app.innerHTML = `
       <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
     <div id="documentTabs" class="document-tabs" role="tablist" aria-label="Open diagrams"></div>
+
+    <dialog id="profileDialog" class="profile-dialog" aria-labelledby="profileDialogTitle">
+      <div class="profile-dialog-heading">
+        <div><span class="profile-mark" aria-hidden="true">PU</span><div><h2 id="profileDialogTitle">Local profiles</h2><p>Separate workspace history without accounts or passwords.</p></div></div>
+        <button id="profileCloseBtn" class="icon-btn" type="button" aria-label="Close profiles">×</button>
+      </div>
+      <div class="profile-dialog-body">
+        <p class="profile-privacy-note"><strong>Profiles are not security.</strong> Named profiles keep their own recent files, recovery tabs, and preferences in this browser. Guest data is discarded when this page closes.</p>
+        <div id="profileList" class="profile-list"></div>
+        <form id="profileCreateForm" class="profile-create-form">
+          <label for="profileNameInput">New profile</label>
+          <div><input id="profileNameInput" type="text" maxlength="40" placeholder="Profile name" autocomplete="off" required /><button class="primary" type="submit">Create and use</button></div>
+          <span id="profileFormError" class="profile-form-error" role="alert"></span>
+        </form>
+      </div>
+    </dialog>
 
     <dialog id="shortcutsDialog" class="shortcuts-dialog" aria-labelledby="shortcutsTitle">
       <div class="shortcuts-heading">
@@ -402,9 +446,13 @@ const els = {
   ,arrowActivationBtn: document.querySelector('#arrowActivationBtn')
   ,recentFilesMenu: document.querySelector('#recentFilesMenu')
   ,clearRecentFilesBtn: document.querySelector('#clearRecentFilesBtn')
+  ,profileDialog: document.querySelector('#profileDialog')
+  ,profileList: document.querySelector('#profileList')
+  ,profileNameInput: document.querySelector('#profileNameInput')
+  ,profileFormError: document.querySelector('#profileFormError')
 };
 
-let recentFiles = loadRecentFiles();
+let recentFiles = loadRecentFiles(profileStorage);
 const recentFileHandles = new Map();
 
 function renderRecentFilesMenu() {
@@ -415,13 +463,108 @@ function renderRecentFilesMenu() {
 }
 
 function rememberRecentFile(filename = state.filename, source = canonicalSource(), fileHandle = null) {
-  recentFiles = storeRecentFile(localStorage, recentFiles, { filename, source });
+  recentFiles = storeRecentFile(profileStorage, recentFiles, { filename, source });
   if (fileHandle) {
     recentFileHandles.set(filename, fileHandle);
-    storeRecentFileHandle(filename, fileHandle).catch(() => {});
+    if (!profileContext.isGuest) storeRecentFileHandle(filename, fileHandle, indexedDB, profileContext.profile.id).catch(() => {});
   }
   renderRecentFilesMenu();
 }
+
+let profileSwitchInProgress = false;
+
+function renderProfileList() {
+  const profiles = listUserProfiles(localStorage);
+  const rows = [
+    { id: GUEST_PROFILE_ID, name: 'Guest', detail: 'No history is retained after this page closes.' },
+    ...profiles.map(profile => ({ ...profile, detail: 'Recent files and recovery tabs are isolated in this browser.' }))
+  ];
+  els.profileList.innerHTML = rows.map(profile => {
+    const active = profile.id === profileContext.profile.id;
+    const selectable = !active || profileContext.needsSelection;
+    return `<div class="profile-row${active ? ' active' : ''}">
+      <button type="button" data-profile-select="${escapeHtml(profile.id)}" ${selectable ? '' : 'disabled'}>
+        <span class="profile-avatar" aria-hidden="true">${escapeHtml(profile.name.slice(0, 1).toUpperCase())}</span>
+        <span><strong>${escapeHtml(profile.name)}</strong><small>${escapeHtml(profile.detail)}</small></span>
+        <b>${active ? (profileContext.needsSelection ? 'Continue' : 'Current') : 'Use'}</b>
+      </button>
+      ${profile.id !== GUEST_PROFILE_ID ? `<button class="profile-delete" type="button" data-profile-delete="${escapeHtml(profile.id)}" aria-label="Delete ${escapeHtml(profile.name)}" title="Delete profile">×</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openProfileManager() {
+  renderProfileList();
+  els.profileFormError.textContent = '';
+  els.profileDialog.showModal();
+}
+
+function hasGuestChangesToDiscard() {
+  if (!profileContext.isGuest) return false;
+  syncActiveDocument({ persist: false });
+  return documentTabs.length > 1 || documentTabs.some(tab => tab.source !== DEFAULT_SOURCE);
+}
+
+function switchProfile(profileId) {
+  if (profileId === profileContext.profile.id) {
+    if (profileContext.needsSelection) {
+      selectUserProfile(localStorage, profileId);
+      profileContext.needsSelection = false;
+    }
+    return els.profileDialog.close();
+  }
+  if (hasGuestChangesToDiscard()
+    && !window.confirm('Guest workspace changes will be discarded when switching profiles. Continue?')) return;
+  if (!profileContext.isGuest) persistWorkspaceNow();
+  if (!selectUserProfile(localStorage, profileId)) return;
+  profileSwitchInProgress = true;
+  location.reload();
+}
+
+document.querySelector('#profileBtn').addEventListener('click', openProfileManager);
+document.querySelector('#profileCloseBtn').addEventListener('click', () => {
+  if (profileContext.needsSelection) switchProfile(GUEST_PROFILE_ID);
+  else els.profileDialog.close();
+});
+els.profileDialog.addEventListener('cancel', event => {
+  if (!profileContext.needsSelection) return;
+  event.preventDefault();
+  switchProfile(GUEST_PROFILE_ID);
+});
+els.profileDialog.addEventListener('click', event => {
+  if (event.target === els.profileDialog && !profileContext.needsSelection) els.profileDialog.close();
+});
+els.profileList.addEventListener('click', event => {
+  const select = event.target.closest('[data-profile-select]');
+  if (select) return switchProfile(select.dataset.profileSelect);
+  const remove = event.target.closest('[data-profile-delete]');
+  if (!remove) return;
+  const profile = listUserProfiles(localStorage).find(item => item.id === remove.dataset.profileDelete);
+  if (!profile || !window.confirm(`Delete “${profile.name}” and its local workspace history? Files saved on disk will not be deleted.`)) return;
+  const removingActive = profile.id === profileContext.profile.id;
+  deleteUserProfile(localStorage, profile.id);
+  clearRecentFileHandles(indexedDB, profile.id).catch(() => {});
+  if (removingActive) {
+    profileSwitchInProgress = true;
+    location.reload();
+  } else renderProfileList();
+});
+document.querySelector('#profileCreateForm').addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    const profile = createUserProfile(localStorage, els.profileNameInput.value);
+    if (hasGuestChangesToDiscard()
+      && !window.confirm('Create the profile and discard the current Guest workspace changes?')) {
+      deleteUserProfile(localStorage, profile.id);
+      return;
+    }
+    selectUserProfile(localStorage, profile.id);
+    profileSwitchInProgress = true;
+    location.reload();
+  } catch (error) {
+    els.profileFormError.textContent = error?.message || String(error);
+  }
+});
 
 let detachedPreviewWindow = null;
 let detachedPreviewClosePoll = null;
@@ -576,8 +719,13 @@ window.addEventListener('message', event => {
 
 state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
 els.editor.value = state.foldProjection.text;
+els.editor.setSelectionRange(
+  sourceOffsetToViewOffset(state.source, state.foldProjection, initialDocument.selectionStart),
+  sourceOffsetToViewOffset(state.source, state.foldProjection, initialDocument.selectionEnd)
+);
+els.editor.scrollTop = initialDocument.scrollTop;
+els.editor.scrollLeft = initialDocument.scrollLeft;
 const editHistory = installUndoRedo(els.editor);
-state.savedSource = '';
 els.liveToggle.checked = state.live;
 els.autocompleteToggle.checked = state.autocomplete;
 applyTheme();
@@ -610,7 +758,19 @@ function activeDocumentTab() {
   return documentTabs.find(tab => tab.id === activeTabId) || documentTabs[0];
 }
 
-function syncActiveDocument() {
+function scheduleWorkspaceSave() {
+  clearTimeout(workspaceSaveTimer);
+  workspaceSaveTimer = setTimeout(persistWorkspaceNow, 120);
+}
+
+function persistWorkspaceNow() {
+  clearTimeout(workspaceSaveTimer);
+  workspaceSaveTimer = null;
+  syncActiveDocument({ persist: false });
+  storeWorkspaceSession(profileStorage, documentTabs, activeTabId);
+}
+
+function syncActiveDocument({ persist = true } = {}) {
   const tab = activeDocumentTab();
   if (!tab || !els?.editor) return;
   tab.source = canonicalSource();
@@ -620,6 +780,7 @@ function syncActiveDocument() {
   tab.selectionEnd = selection.end;
   tab.scrollTop = els.editor.scrollTop;
   tab.scrollLeft = els.editor.scrollLeft;
+  if (persist) scheduleWorkspaceSave();
 }
 
 function renderDocumentTabs() {
@@ -666,7 +827,7 @@ function activateDocumentTab(id, { render = true, syncCurrent = true } = {}) {
 
 function addDocumentTab(source, filename, options = {}) {
   syncActiveDocument();
-  const spellingIgnores = options.isNew ? { occurrences: [], words: [] } : loadSpellingIgnores(localStorage, filename);
+  const spellingIgnores = options.isNew ? { occurrences: [], words: [] } : loadSpellingIgnores(profileStorage, filename);
   const tab = createDocumentTab(source, filename, {
     ...options,
     ignoredSpellingOccurrences: spellingIgnores.occurrences,
@@ -698,6 +859,7 @@ function closeDocumentTab(id) {
     activeTabId = '';
     activateDocumentTab(documentTabs[Math.max(0, index - 1)].id, { syncCurrent: false });
   } else renderDocumentTabs();
+  scheduleWorkspaceSave();
 }
 
 function sourceSelectionFromView() {
@@ -786,7 +948,7 @@ function applyWorkspaceSplit(percent = state.workspaceSplit) {
   els.workspaceSplitter?.setAttribute('aria-valuenow', String(Math.round(safe)));
   els.workspaceSplitter?.setAttribute('aria-valuemin', '25');
   els.workspaceSplitter?.setAttribute('aria-valuemax', '75');
-  localStorage.setItem('plantuml-workspace-split', String(safe));
+  profileStorage.setItem('plantuml-workspace-split', String(safe));
 }
 
 function applyProblemsHeight(height = state.problemsHeight) {
@@ -798,7 +960,7 @@ function applyProblemsHeight(height = state.problemsHeight) {
   els.problemsSplitter?.setAttribute('aria-valuenow', String(Math.round(safe)));
   els.problemsSplitter?.setAttribute('aria-valuemin', '90');
   els.problemsSplitter?.setAttribute('aria-valuemax', String(Math.round(maxHeight)));
-  localStorage.setItem('plantuml-problems-height', String(safe));
+  profileStorage.setItem('plantuml-problems-height', String(safe));
 }
 
 function startDrag(event, { axis, onMove, onEnd }) {
@@ -1520,7 +1682,7 @@ function ignoreSpellingDiagnostic(item, allOccurrences = false) {
   if (item?.source !== 'spelling' || !item.word) return;
   if (allOccurrences) state.ignoredSpellingWords.add(item.word.toLowerCase());
   else if (item.ignoreKey) state.ignoredSpellingOccurrences.add(item.ignoreKey);
-  if (!state.isNewFile) storeSpellingIgnores(localStorage, state.filename, {
+  if (!state.isNewFile) storeSpellingIgnores(profileStorage, state.filename, {
     occurrences: state.ignoredSpellingOccurrences,
     words: state.ignoredSpellingWords
   });
@@ -1578,7 +1740,7 @@ function updateEditorMeta() {
   const charCount = source.length;
   const folded = state.foldedStarts.size;
   els.sourceStats.textContent = `${lineCount} lines • ${charCount.toLocaleString()} chars${folded ? ` • ${folded} folded` : ''}`;
-  localStorage.setItem('plantuml-local-source', source);
+  profileStorage.setItem('plantuml-local-source', source);
   updateFileStatus();
   updateSyntaxHighlight();
   runLocalDiagnostics();
@@ -1679,7 +1841,7 @@ async function writeSourceToHandle(handle) {
   state.filename = handle.name || state.filename;
   state.savedSource = canonicalSource();
   state.isNewFile = false;
-  storeSpellingIgnores(localStorage, state.filename, {
+  storeSpellingIgnores(profileStorage, state.filename, {
     occurrences: state.ignoredSpellingOccurrences,
     words: state.ignoredSpellingWords
   });
@@ -1691,6 +1853,11 @@ async function writeSourceToHandle(handle) {
 async function saveSource() {
   try {
     if (state.fileHandle) return await writeSourceToHandle(state.fileHandle);
+    if (!state.isNewFile && !profileContext.isGuest) {
+      const handle = recentFileHandles.get(state.filename)
+        || await loadRecentFileHandle(state.filename, indexedDB, profileContext.profile.id);
+      if (handle && await ensureFileHandlePermission(handle)) return await writeSourceToHandle(handle);
+    }
     return await saveSourceAs();
   } catch (error) {
     if (error?.name !== 'AbortError') showError(`Save failed. ${error?.message || error}`);
@@ -1798,7 +1965,7 @@ async function copySvg() {
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.dark ? 'dark' : 'light';
-  localStorage.setItem('plantuml-local-theme', state.dark ? 'dark' : 'light');
+  profileStorage.setItem('plantuml-local-theme', state.dark ? 'dark' : 'light');
   sendDetachedPreviewState();
 }
 
@@ -1834,7 +2001,7 @@ const colorPicker = createColorPicker({
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
   colorPicker.close();
-  const spellingIgnores = saved && !isNew ? loadSpellingIgnores(localStorage, filename) : { occurrences: [], words: [] };
+  const spellingIgnores = saved && !isNew ? loadSpellingIgnores(profileStorage, filename) : { occurrences: [], words: [] };
   state.ignoredSpellingOccurrences = new Set(spellingIgnores.occurrences);
   state.ignoredSpellingWords = new Set(spellingIgnores.words);
   state.source = source;
@@ -1991,7 +2158,10 @@ document.querySelector('#openBtn').addEventListener('click', () => openSourceFil
 document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
 async function openRecentFile(item) {
   try {
-    const handle = recentFileHandles.get(item.filename) || await loadRecentFileHandle(item.filename);
+    const handle = recentFileHandles.get(item.filename)
+      || (!profileContext.isGuest
+        ? await loadRecentFileHandle(item.filename, indexedDB, profileContext.profile.id)
+        : null);
     if (handle && await ensureFileHandlePermission(handle)) {
       const file = await handle.getFile();
       const source = await file.text();
@@ -2016,9 +2186,9 @@ els.recentFilesMenu.addEventListener('click', event => {
   openRecentFile(item);
 });
 els.clearRecentFilesBtn.addEventListener('click', () => {
-  recentFiles = clearRecentFiles();
+  recentFiles = clearRecentFiles(profileStorage);
   recentFileHandles.clear();
-  clearRecentFileHandles().catch(() => {});
+  if (!profileContext.isGuest) clearRecentFileHandles(indexedDB, profileContext.profile.id).catch(() => {});
   renderRecentFilesMenu();
 });
 document.querySelector('#saveBtn').addEventListener('click', () => saveSource());
@@ -2109,13 +2279,13 @@ document.querySelector('#themeBtn').addEventListener('click', () => {
 
 els.autocompleteToggle.addEventListener('change', () => {
   state.autocomplete = els.autocompleteToggle.checked;
-  localStorage.setItem('plantuml-autocomplete', String(state.autocomplete));
+  profileStorage.setItem('plantuml-autocomplete', String(state.autocomplete));
   autocomplete.setEnabled(state.autocomplete);
 });
 
 els.liveToggle.addEventListener('change', () => {
   state.live = els.liveToggle.checked;
-  localStorage.setItem('plantuml-live-render', String(state.live));
+  profileStorage.setItem('plantuml-live-render', String(state.live));
   if (state.live) doRender();
 });
 
@@ -2236,7 +2406,7 @@ document.querySelector('#saveAsFallbackForm').addEventListener('submit', event =
   state.filename = filename;
   state.savedSource = canonicalSource();
   state.isNewFile = false;
-  storeSpellingIgnores(localStorage, filename, {
+  storeSpellingIgnores(profileStorage, filename, {
     occurrences: state.ignoredSpellingOccurrences,
     words: state.ignoredSpellingWords
   });
@@ -2316,8 +2486,12 @@ document.addEventListener('pointerdown', event => {
   if (!event.target.closest('.arrow-action-menu')) closeArrowActionMenu();
 });
 
+window.addEventListener('pagehide', () => {
+  if (!profileSwitchInProgress) persistWorkspaceNow();
+});
 window.addEventListener('beforeunload', event => {
-  syncActiveDocument();
+  if (profileSwitchInProgress) return;
+  persistWorkspaceNow();
   if (!documentTabs.some(isDocumentDirty)) return;
   event.preventDefault();
   event.returnValue = '';
@@ -2326,6 +2500,7 @@ window.addEventListener('beforeunload', event => {
 async function init() {
   try {
     renderDocumentTabs();
+    if (profileContext.needsSelection) requestAnimationFrame(openProfileManager);
     els.renderStatus.textContent = 'Loading Viz.js…';
     await loadClassicScript(vizGlobalUrl);
     els.renderStatus.textContent = 'Engine ready';

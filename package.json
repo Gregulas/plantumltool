@@ -1,16 +1,16 @@
 {
   "name": "plantuml-local-studio",
-  "version": "3.3.7",
+  "version": "3.3.8",
   "private": true,
   "type": "module",
   "description": "Offline local PlantUML editor and renderer with type-based syntax highlighting, inline color picker, collapsible blocks, autocomplete, formatting, diagnostics, semantic reference warnings, resizable panels, last-known-good rendering, and diagram-to-source navigation.",
   "scripts": {
     "postinstall": "node scripts/patch-plantuml-browser-limit.mjs",
     "predev": "node scripts/patch-plantuml-browser-limit.mjs",
-    "dev": "vite --force --host 127.0.0.1",
+    "dev": "vite --force --host 127.0.0.1 --port 5173 --strictPort",
     "prebuild": "node scripts/patch-plantuml-browser-limit.mjs",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
