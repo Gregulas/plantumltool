@@ -17,6 +17,7 @@ test('maps standard file, editing, rendering, and zoom shortcuts', () => {
   assert.equal(shortcutAction(event('-')), 'zoom-out');
   assert.equal(shortcutAction(event('0')), 'zoom-reset');
   assert.equal(shortcutAction(event("'", { code: 'Quote' })), 'toggle-section-comment');
+  assert.equal(shortcutAction(event('e', { shiftKey: true })), 'expand-script-shortcut');
 });
 
 test('maps alternate shortcuts by physical key code', () => {
@@ -27,6 +28,6 @@ test('maps alternate shortcuts by physical key code', () => {
 
 test('ignores keys without Ctrl or Command and documents every action', () => {
   assert.equal(shortcutAction(event('+', { ctrlKey: false })), null);
-  assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 31);
+  assert.equal(SHORTCUT_GROUPS.reduce((count, group) => count + group.items.length, 0), 32);
   assert.ok(SHORTCUT_GROUPS.some(group => group.items.some(item => item[0] === 'Show suggestions' && item[1] === 'Autocomplete')));
 });
