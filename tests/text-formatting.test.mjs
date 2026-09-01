@@ -49,11 +49,11 @@ test('does not allow the newline before a multiline note terminator into the for
   assert.equal(edit.valid, false);
 });
 
-test('rejects participant names, arrow operators, and declarations', () => {
+test('rejects arrow operators and functional declaration aliases', () => {
   const arrow = 'A -> B: Request';
   assert.equal(createTextFormatEdit(arrow, ...selection(arrow, 'A -> B'), 'bold').valid, false);
   const declaration = 'participant "Web Portal" as Web';
-  assert.equal(createTextFormatEdit(declaration, ...selection(declaration, 'Web Portal'), 'bold').valid, false);
+  assert.equal(createTextFormatEdit(declaration, ...selection(declaration, 'Web', 1), 'bold').valid, false);
 });
 
 test('rejects functional script selected inside a multiline note', () => {
@@ -86,8 +86,57 @@ test('requires a non-empty selection wholly contained in one supported text area
 });
 
 test('does not mistake formatted title or directive text for an arrow label', () => {
-  const title = 'title Release -- status: ready';
-  assert.equal(createTextFormatEdit(title, ...selection(title, 'ready'), 'bold').valid, false);
   const directive = '!define EXAMPLE A --> B: label';
   assert.equal(createTextFormatEdit(directive, ...selection(directive, 'label'), 'bold').valid, false);
+});
+
+test('formats alt, else, par, loop, and other sequence group labels', () => {
+  for (const [keyword, label] of [
+    ['alt', 'Approved path'], ['else', 'Rejected path'], ['par', 'Send notifications'],
+    ['loop', 'For each item'], ['opt', 'Optional audit'], ['break', 'Request failed'],
+    ['critical', 'Commit transaction'], ['group', 'External services']
+  ]) {
+    const source = `${keyword} ${label}`;
+    const edit = createTextFormatEdit(source, ...selection(source, label), 'bold');
+    assert.equal(edit.valid, true, `${keyword} label should be formattable`);
+    assert.equal(apply(source, edit), `${keyword} <b>${label}</b>`);
+  }
+});
+
+test('formats sequence separators, delays, references, pages, and activity labels', () => {
+  const examples = [
+    ['== Authentication phase ==', 'Authentication phase'],
+    ['... Waiting for callback ...', 'Waiting for callback'],
+    ['ref over Portal, API : OAuth callback', 'OAuth callback'],
+    ['newpage Final results', 'Final results'],
+    [':Process application;', 'Process application']
+  ];
+  for (const [source, label] of examples) {
+    const edit = createTextFormatEdit(source, ...selection(source, label), 'italic');
+    assert.equal(edit.valid, true, `${source} should expose its display label`);
+    assert.ok(apply(source, edit).includes(`<i>${label}</i>`));
+  }
+});
+
+test('formats inline and multiline title-family display text', () => {
+  const title = 'title Release -- status: ready';
+  const inline = createTextFormatEdit(title, ...selection(title, 'Release -- status: ready'), 'underline');
+  assert.equal(inline.valid, true);
+  assert.equal(apply(title, inline), 'title <u>Release -- status: ready</u>');
+
+  const block = 'title\nQuarterly architecture review\nend title';
+  const multiline = createTextFormatEdit(block, ...selection(block, 'Quarterly architecture review'), 'bold');
+  assert.equal(multiline.valid, true);
+});
+
+test('formats aliased display names without touching their functional references', () => {
+  const displayFirst = 'participant "Web Portal" as Portal';
+  const firstEdit = createTextFormatEdit(displayFirst, ...selection(displayFirst, 'Web Portal'), 'bold');
+  assert.equal(apply(displayFirst, firstEdit), 'participant "<b>Web Portal</b>" as Portal');
+
+  const aliasFirst = 'participant Portal as "Web Portal"';
+  const secondEdit = createTextFormatEdit(aliasFirst, ...selection(aliasFirst, 'Web Portal'), 'italic');
+  assert.equal(apply(aliasFirst, secondEdit), 'participant Portal as "<i>Web Portal</i>"');
+
+  assert.equal(createTextFormatEdit(displayFirst, ...selection(displayFirst, 'Portal', 1), 'bold').valid, false);
 });
