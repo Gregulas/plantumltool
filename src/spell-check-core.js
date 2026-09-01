@@ -61,7 +61,10 @@ export function analyzeProseSpelling(source, checker) {
   const diagnostics = [];
   const occurrences = new Map();
   for (const segment of proseSegments(source)) {
-    for (const match of segment.text.matchAll(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)) {
+    // Preserve every character position while hiding PlantUML HTML/Creole tags,
+    // so spelling fixes still target the exact source offsets of visible words.
+    const visibleText = segment.text.replace(/<[^>]*>/g, tag => ' '.repeat(tag.length));
+    for (const match of visibleText.matchAll(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)) {
       const word = match[0];
       if (!shouldCheckWord(word) || checker.correct(word)) continue;
       const suggestions = checker.suggest(word).slice(0, 3);

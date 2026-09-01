@@ -47,7 +47,7 @@ export function plantUmlSvgLineToSourceLine(value, wrapperLineOffset = 0) {
 export function canonicalNavigationText(value) {
   return String(value ?? '')
     .replace(/\\n/g, ' ')
-    .replace(/<\/?(?:b|i|u|s|strike|wavy|color|size|font|back(?:ground)?)(?:=[^>]*)?>/gi, '')
+    .replace(/<\/?(?:b|i|u|s|strike|wavy|color|size|font|back(?:ground)?)(?:(?:=|:)[^>]*)?>/gi, '')
     .replace(/\*\*(.*?)\*\*/gs, '$1')
     .replace(/__(.*?)__/gs, '$1')
     .replace(/~~(.*?)~~/gs, '$1')

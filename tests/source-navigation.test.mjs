@@ -123,6 +123,8 @@ newpage Final page
 test('normalizes formatted note and separator text for rendered matching', () => {
   assert.equal(canonicalNavigationText('**Important phase**'), canonicalNavigationText('Important phase'));
   assert.equal(canonicalNavigationText('<b>Bold comment</b>'), canonicalNavigationText('Bold comment'));
+  assert.equal(canonicalNavigationText('<color:#169C9A><size:18>Important</size></color>'), canonicalNavigationText('Important'));
+  assert.equal(canonicalNavigationText('<font:monospaced>POST</font>'), canonicalNavigationText('POST'));
   assert.equal(canonicalNavigationText('Mixed **bold words** here'), canonicalNavigationText('Mixed bold words here'));
 });
 
