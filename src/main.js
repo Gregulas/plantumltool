@@ -310,21 +310,12 @@ app.innerHTML = `
         <span>Color</span>
         <input id="textColorInput" type="color" value="#169c9a" aria-label="Text color" />
       </label>
-      <label class="text-size-control">
-        <span class="sr-only">Text size</span>
-        <select id="textSizeSelect" aria-label="Text size" title="Set selected text size">
-          <option value="">Size</option>
-          <option value="10">10</option>
-          <option value="12">12</option>
-          <option value="14">14</option>
-          <option value="16">16</option>
-          <option value="18">18</option>
-          <option value="20">20</option>
-          <option value="24">24</option>
-          <option value="28">28</option>
-          <option value="32">32</option>
-        </select>
-      </label>
+      <div class="text-size-control">
+        <button id="textSizeButton" type="button" aria-label="Text size" aria-haspopup="listbox" aria-expanded="false" title="Set selected text size">Size <span aria-hidden="true">▾</span></button>
+        <div id="textSizeMenu" class="text-size-menu" role="listbox" aria-label="Text size" hidden>
+          ${[10, 12, 14, 16, 18, 20, 24, 28, 32].map(size => `<button type="button" role="option" data-text-size="${size}">${size}</button>`).join('')}
+        </div>
+      </div>
       <span id="textFormattingStatus" class="text-formatting-status" role="status" aria-live="polite">Select text inside a note or arrow label</span>
     </div>
     <div id="documentTabs" class="document-tabs" role="tablist" aria-label="Open diagrams"></div>
@@ -479,7 +470,8 @@ const els = {
   textFormattingToolbar: document.querySelector('#textFormattingToolbar'),
   textFormattingStatus: document.querySelector('#textFormattingStatus'),
   textColorInput: document.querySelector('#textColorInput'),
-  textSizeSelect: document.querySelector('#textSizeSelect')
+  textSizeButton: document.querySelector('#textSizeButton'),
+  textSizeMenu: document.querySelector('#textSizeMenu')
   ,selectionActions: document.querySelector('#selectionActions')
   ,selectionOpenTabBtn: document.querySelector('#selectionOpenTabBtn')
   ,arrowActionMenu: document.querySelector('#arrowActionMenu')
@@ -2044,9 +2036,28 @@ const colorPicker = createColorPicker({
 function textFormattingControls() {
   return [
     ...els.textFormattingToolbar.querySelectorAll('[data-text-format]'),
+    ...els.textSizeMenu.querySelectorAll('[data-text-size]'),
     els.textColorInput,
-    els.textSizeSelect
+    els.textSizeButton
   ];
+}
+
+function closeTextSizeMenu() {
+  els.textSizeMenu.hidden = true;
+  els.textSizeButton.setAttribute('aria-expanded', 'false');
+}
+
+function toggleTextSizeMenu() {
+  if (els.textSizeButton.disabled) return;
+  if (!els.textSizeMenu.hidden) {
+    closeTextSizeMenu();
+    return;
+  }
+  const bounds = els.textSizeButton.getBoundingClientRect();
+  els.textSizeMenu.style.left = `${Math.round(bounds.left)}px`;
+  els.textSizeMenu.style.top = `${Math.round(bounds.bottom + 4)}px`;
+  els.textSizeMenu.hidden = false;
+  els.textSizeButton.setAttribute('aria-expanded', 'true');
 }
 
 function setTextFormattingStatus(message, stateName = '') {
@@ -2163,20 +2174,31 @@ els.textFormattingToolbar.addEventListener('pointerdown', event => {
   const selection = sourceSelectionFromView();
   const context = textFormatSelectionContext(source, selection.start, selection.end);
   if (context.valid) lastTextFormattingSelection = { source, start: selection.start, end: selection.end, context };
-  if (event.target.closest('button[data-text-format]')) event.preventDefault();
+  if (event.target.closest('button[data-text-format], #textSizeButton, button[data-text-size]')) event.preventDefault();
 });
-els.textFormattingToolbar.addEventListener('click', event => {
+els.textFormattingToolbar.addEventListener('click', async event => {
+  if (event.target.closest('#textSizeButton')) {
+    toggleTextSizeMenu();
+    return;
+  }
+  const sizeOption = event.target.closest('button[data-text-size]');
+  if (sizeOption) {
+    const value = sizeOption.dataset.textSize;
+    closeTextSizeMenu();
+    if (!sizeOption.disabled) await applySelectedTextFormatting('size', value);
+    return;
+  }
   const button = event.target.closest('button[data-text-format]');
   if (button && !button.disabled) applySelectedTextFormatting(button.dataset.textFormat);
 });
 els.textColorInput.addEventListener('change', event => {
   if (!event.target.disabled) applySelectedTextFormatting('color', event.target.value);
 });
-els.textSizeSelect.addEventListener('input', async event => {
-  const value = event.target.value;
-  if (!value || event.target.disabled) return;
-  await applySelectedTextFormatting('size', value);
-  event.target.value = '';
+els.textFormattingToolbar.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeTextSizeMenu();
+});
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('.text-size-control')) closeTextSizeMenu();
 });
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
