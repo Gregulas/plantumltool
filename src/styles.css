@@ -92,7 +92,24 @@ button, select { color: var(--text); }
 .text-toolbar-separator { flex: 0 0 auto; width: 1px; height: 24px; margin: 0 2px; background: var(--border); }
 .text-color-control { min-height: 30px; padding: 3px 6px; display: flex; align-items: center; gap: 6px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-size: 10.5px; }
 .text-color-control input { width: 24px; height: 22px; padding: 1px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
-.text-size-control select { min-height: 30px; padding: 4px 24px 4px 7px; border-radius: 6px; font-size: 10.5px; }
+.text-size-control { position:relative; }
+.text-size-control > button { min-height:30px; padding:4px 8px; display:flex; align-items:center; gap:6px; border-radius:6px; font-size:10.5px; }
+.text-size-menu {
+  position:fixed;
+  z-index:1200;
+  width:70px;
+  padding:4px;
+  display:grid;
+  gap:2px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:7px;
+  box-shadow:0 8px 22px rgba(0,0,0,.18);
+}
+.text-size-menu[hidden] { display:none; }
+.text-size-menu button { min-height:27px; padding:3px 8px; border:0; background:transparent; text-align:left; font-size:11px; }
+.text-size-menu button:hover,
+.text-size-menu button:focus-visible { color:var(--accent-strong); background:var(--surface-2); }
 .text-formatting-status { min-width: 210px; overflow: hidden; color: var(--muted); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .text-formatting-status[data-state="ready"] { color: var(--accent-strong); font-weight: 700; }
 .text-formatting-status[data-state="error"] { color: var(--danger); font-weight: 700; }
