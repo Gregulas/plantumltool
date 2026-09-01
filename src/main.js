@@ -213,6 +213,7 @@ let workspaceSaveTimer = null;
 let textFormattingBusy = false;
 let textFormattingValidationSeq = 0;
 let lastTextFormattingSelection = null;
+let pendingTextColorTimer = null;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -2192,7 +2193,17 @@ els.textFormattingToolbar.addEventListener('click', async event => {
   if (button && !button.disabled) applySelectedTextFormatting(button.dataset.textFormat);
 });
 els.textColorInput.addEventListener('change', event => {
+  clearTimeout(pendingTextColorTimer);
+  pendingTextColorTimer = null;
   if (!event.target.disabled) applySelectedTextFormatting('color', event.target.value);
+});
+els.textColorInput.addEventListener('input', event => {
+  const value = event.target.value;
+  clearTimeout(pendingTextColorTimer);
+  pendingTextColorTimer = setTimeout(() => {
+    pendingTextColorTimer = null;
+    if (!els.textColorInput.disabled) applySelectedTextFormatting('color', value);
+  }, 250);
 });
 els.textFormattingToolbar.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeTextSizeMenu();
