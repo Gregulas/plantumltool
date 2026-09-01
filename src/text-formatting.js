@@ -225,6 +225,26 @@ function formatTags(format, value) {
   return null;
 }
 
+function enclosingColorTag(source, selectionStart, selectionEnd) {
+  const stack = [];
+  const tags = /<\/?color(?::[^>]+)?>/ig;
+  let match;
+  let enclosing = null;
+  while ((match = tags.exec(source))) {
+    const closing = /^<\//.test(match[0]);
+    if (!closing) {
+      stack.push({ start: match.index, end: tags.lastIndex });
+      continue;
+    }
+    const opening = stack.pop();
+    if (!opening) continue;
+    if (selectionStart >= opening.end && selectionEnd <= match.index) {
+      enclosing = { ...opening, closeStart: match.index, closeEnd: tags.lastIndex };
+    }
+  }
+  return enclosing;
+}
+
 export function textFormatSelectionContext(source, selectionStart, selectionEnd) {
   const text = String(source ?? '');
   const start = Number(selectionStart);
@@ -248,6 +268,23 @@ export function createTextFormatEdit(source, selectionStart, selectionEnd, forma
   if (!context.valid) return context;
   const tags = formatTags(format, value);
   if (!tags) return { valid: false, reason: 'Unsupported text-formatting option.' };
+
+  if (format === 'color') {
+    const existing = enclosingColorTag(String(source ?? ''), context.start, context.end);
+    if (existing) {
+      const offsetChange = tags.open.length - (existing.end - existing.start);
+      return {
+        valid: true,
+        kind: context.kind,
+        label: tags.label,
+        start: existing.start,
+        end: existing.end,
+        text: tags.open,
+        selectionStart: context.start + offsetChange,
+        selectionEnd: context.end + offsetChange
+      };
+    }
+  }
 
   return {
     valid: true,

@@ -72,6 +72,21 @@ test('creates validated color and size tags', () => {
   assert.equal(createTextFormatEdit(source, ...bounds, 'size', '80').valid, false);
 });
 
+test('replaces an enclosing text color instead of nesting color tags', () => {
+  const source = 'A -> B: <color:#112233>Important text</color>';
+  const edit = createTextFormatEdit(source, ...selection(source, 'Important text'), 'color', '#abcdef');
+  assert.equal(edit.valid, true);
+  assert.equal(apply(source, edit), 'A -> B: <color:#ABCDEF>Important text</color>');
+  assert.equal(edit.selectionEnd - edit.selectionStart, 'Important text'.length);
+});
+
+test('recolors an existing color range inside another text format without nesting colors', () => {
+  const source = 'A -> B: <b><color:#112233>Important</color></b>';
+  const edit = createTextFormatEdit(source, ...selection(source, 'Important'), 'color', '#00aa88');
+  assert.equal(apply(source, edit), 'A -> B: <b><color:#00AA88>Important</color></b>');
+  assert.equal((apply(source, edit).match(/<color:/g) || []).length, 1);
+});
+
 test('supports monospace formatting and quoted participant names containing colons', () => {
   const source = '"Web: Portal" -> API: POST /applications';
   const edit = createTextFormatEdit(source, ...selection(source, 'POST /applications'), 'monospace');
