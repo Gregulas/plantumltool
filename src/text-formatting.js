@@ -225,24 +225,86 @@ function formatTags(format, value) {
   return null;
 }
 
-function enclosingColorTag(source, selectionStart, selectionEnd) {
+const FORMAT_ORDER = Object.freeze(['bold', 'italic', 'underline', 'strike', 'monospace', 'color', 'size']);
+const FORMAT_TAG_PATTERN = /<\/?(?:b|i|u|s|font|color|size)(?::[^>]+)?>/ig;
+
+function formatTypeFromTag(tag) {
+  if (/^<\/?b>/i.test(tag)) return 'bold';
+  if (/^<\/?i>/i.test(tag)) return 'italic';
+  if (/^<\/?u>/i.test(tag)) return 'underline';
+  if (/^<\/?s>/i.test(tag)) return 'strike';
+  if (/^<\/?font(?::monospaced)?>/i.test(tag)) return 'monospace';
+  if (/^<\/?color(?::[^>]+)?>/i.test(tag)) return 'color';
+  if (/^<\/?size(?::[^>]+)?>/i.test(tag)) return 'size';
+  return '';
+}
+
+function pairedFormatTags(source) {
   const stack = [];
-  const tags = /<\/?color(?::[^>]+)?>/ig;
+  const pairs = [];
+  const tags = new RegExp(FORMAT_TAG_PATTERN.source, FORMAT_TAG_PATTERN.flags);
   let match;
-  let enclosing = null;
   while ((match = tags.exec(source))) {
+    const type = formatTypeFromTag(match[0]);
+    if (!type) continue;
     const closing = /^<\//.test(match[0]);
     if (!closing) {
-      stack.push({ start: match.index, end: tags.lastIndex });
+      stack.push({ type, start: match.index, end: tags.lastIndex, open: match[0] });
       continue;
     }
-    const opening = stack.pop();
+    let openingIndex = stack.length - 1;
+    while (openingIndex >= 0 && stack[openingIndex].type !== type) openingIndex -= 1;
+    if (openingIndex < 0) continue;
+    const [opening] = stack.splice(openingIndex, 1);
     if (!opening) continue;
-    if (selectionStart >= opening.end && selectionEnd <= match.index) {
-      enclosing = { ...opening, closeStart: match.index, closeEnd: tags.lastIndex };
-    }
+    pairs.push({ ...opening, closeStart: match.index, closeEnd: tags.lastIndex, close: match[0] });
   }
-  return enclosing;
+  return pairs;
+}
+
+function enclosingFormatTags(source, selectionStart, selectionEnd, type = '') {
+  return pairedFormatTags(source)
+    .filter(pair => (!type || pair.type === type) && selectionStart >= pair.end && selectionEnd <= pair.closeStart)
+    .sort((left, right) => left.start - right.start || right.closeEnd - left.closeEnd);
+}
+
+function stripFormatTags(text, type = '') {
+  return String(text).replace(new RegExp(FORMAT_TAG_PATTERN.source, FORMAT_TAG_PATTERN.flags), tag => {
+    return !type || formatTypeFromTag(tag) === type ? '' : tag;
+  });
+}
+
+function canonicalFormattingEdit(source, context, format, tags) {
+  const enclosing = enclosingFormatTags(source, context.start, context.end);
+  if (!enclosing.length) return null;
+  const outer = enclosing[0];
+  const prefix = source.slice(outer.end, context.start);
+  const suffix = source.slice(context.end, outer.closeStart);
+  if (stripFormatTags(prefix) !== '' || stripFormatTags(suffix) !== '') return null;
+
+  const active = new Map();
+  for (const pair of enclosing) {
+    const definition = pair.type === 'color' || pair.type === 'size'
+      ? { open: pair.open, close: pair.close }
+      : FORMAT_DEFINITIONS[pair.type];
+    if (definition) active.set(pair.type, definition);
+  }
+  if (FORMAT_DEFINITIONS[format] && active.has(format)) active.delete(format);
+  else active.set(format, tags);
+
+  const ordered = FORMAT_ORDER.filter(type => active.has(type)).map(type => active.get(type));
+  const opening = ordered.map(definition => definition.open).join('');
+  const closing = [...ordered].reverse().map(definition => definition.close).join('');
+  return {
+    valid: true,
+    kind: context.kind,
+    label: tags.label,
+    start: outer.start,
+    end: outer.closeEnd,
+    text: `${opening}${context.selected}${closing}`,
+    selectionStart: outer.start + opening.length,
+    selectionEnd: outer.start + opening.length + context.selected.length
+  };
 }
 
 export function textFormatSelectionContext(source, selectionStart, selectionEnd) {
@@ -269,8 +331,11 @@ export function createTextFormatEdit(source, selectionStart, selectionEnd, forma
   const tags = formatTags(format, value);
   if (!tags) return { valid: false, reason: 'Unsupported text-formatting option.' };
 
-  if (format === 'color') {
-    const existing = enclosingColorTag(String(source ?? ''), context.start, context.end);
+  const canonicalEdit = canonicalFormattingEdit(String(source ?? ''), context, format, tags);
+  if (canonicalEdit) return canonicalEdit;
+
+  if (format === 'color' || format === 'size') {
+    const [existing] = enclosingFormatTags(String(source ?? ''), context.start, context.end, format);
     if (existing) {
       const offsetChange = tags.open.length - (existing.end - existing.start);
       return {

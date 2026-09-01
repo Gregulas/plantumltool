@@ -87,6 +87,27 @@ test('recolors an existing color range inside another text format without nestin
   assert.equal((apply(source, edit).match(/<color:/g) || []).length, 1);
 });
 
+test('toggles an existing style instead of nesting duplicate style tags', () => {
+  const source = 'A -> B: <b>Important</b>';
+  const edit = createTextFormatEdit(source, ...selection(source, 'Important'), 'bold');
+  assert.equal(apply(source, edit), 'A -> B: Important');
+});
+
+test('keeps different formats while replacing an existing text size', () => {
+  const source = 'A -> B: <b><size:12>Important</size></b>';
+  const edit = createTextFormatEdit(source, ...selection(source, 'Important'), 'size', '24');
+  assert.equal(apply(source, edit), 'A -> B: <b><size:24>Important</size></b>');
+});
+
+test('normalizes a corrupted duplicate formatting chain around selected text', () => {
+  const source = 'note right\n<b><size:12><b><b><b><size:24>BAU</size></b></b></b></size></b>\nend note';
+  const edit = createTextFormatEdit(source, ...selection(source, 'BAU'), 'size', '18');
+  const result = apply(source, edit);
+  assert.equal(result, 'note right\n<b><size:18>BAU</size></b>\nend note');
+  assert.equal((result.match(/<b>/g) || []).length, 1);
+  assert.equal((result.match(/<size:/g) || []).length, 1);
+});
+
 test('supports monospace formatting and quoted participant names containing colons', () => {
   const source = '"Web: Portal" -> API: POST /applications';
   const edit = createTextFormatEdit(source, ...selection(source, 'POST /applications'), 'monospace');
