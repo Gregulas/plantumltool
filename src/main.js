@@ -212,6 +212,7 @@ let openFileInNewTab = false;
 let workspaceSaveTimer = null;
 let textFormattingBusy = false;
 let textFormattingValidationSeq = 0;
+let lastTextFormattingSelection = null;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -2063,8 +2064,17 @@ function refreshTextFormattingToolbar() {
   }
 
   els.textFormattingToolbar.classList.remove('is-validating');
+  const source = canonicalSource();
   const selection = sourceSelectionFromView();
-  const context = textFormatSelectionContext(canonicalSource(), selection.start, selection.end);
+  let context = textFormatSelectionContext(source, selection.start, selection.end);
+  if (context.valid) {
+    lastTextFormattingSelection = { source, start: selection.start, end: selection.end, context };
+  } else if (els.textFormattingToolbar.contains(document.activeElement)
+    && lastTextFormattingSelection?.source === source) {
+    context = lastTextFormattingSelection.context;
+  } else {
+    lastTextFormattingSelection = null;
+  }
   textFormattingControls().forEach(control => { control.disabled = !context.valid; });
   setTextFormattingStatus(
     context.valid
@@ -2079,7 +2089,13 @@ async function applySelectedTextFormatting(format, value = '') {
   autocomplete.close();
   unfoldAllPreserveCaret();
   const source = canonicalSource();
-  const selection = sourceSelectionFromView();
+  const currentSelection = sourceSelectionFromView();
+  const currentContext = textFormatSelectionContext(source, currentSelection.start, currentSelection.end);
+  const selection = currentContext.valid
+    ? currentSelection
+    : lastTextFormattingSelection?.source === source
+      ? { start: lastTextFormattingSelection.start, end: lastTextFormattingSelection.end }
+      : currentSelection;
   const edit = createTextFormatEdit(source, selection.start, selection.end, format, value);
   if (!edit.valid) {
     setTextFormattingStatus(edit.reason, 'error');
@@ -2105,11 +2121,12 @@ async function applySelectedTextFormatting(format, value = '') {
       setTextFormattingStatus(`Not applied: ${parseError.message}`, 'error');
       return false;
     }
-    const currentSelection = sourceSelectionFromView();
+    const latestSelection = sourceSelectionFromView();
+    const editorSelectionChanged = document.activeElement === els.editor
+      && (latestSelection.start !== selection.start || latestSelection.end !== selection.end);
     if (validationSeq !== textFormattingValidationSeq
       || canonicalSource() !== source
-      || currentSelection.start !== selection.start
-      || currentSelection.end !== selection.end) {
+      || editorSelectionChanged) {
       setTextFormattingStatus('Not applied because the source or selection changed.', 'error');
       return false;
     }
@@ -2142,6 +2159,10 @@ async function applySelectedTextFormatting(format, value = '') {
 }
 
 els.textFormattingToolbar.addEventListener('pointerdown', event => {
+  const source = canonicalSource();
+  const selection = sourceSelectionFromView();
+  const context = textFormatSelectionContext(source, selection.start, selection.end);
+  if (context.valid) lastTextFormattingSelection = { source, start: selection.start, end: selection.end, context };
   if (event.target.closest('button[data-text-format]')) event.preventDefault();
 });
 els.textFormattingToolbar.addEventListener('click', event => {
@@ -2151,10 +2172,11 @@ els.textFormattingToolbar.addEventListener('click', event => {
 els.textColorInput.addEventListener('change', event => {
   if (!event.target.disabled) applySelectedTextFormatting('color', event.target.value);
 });
-els.textSizeSelect.addEventListener('change', event => {
+els.textSizeSelect.addEventListener('input', async event => {
   const value = event.target.value;
+  if (!value || event.target.disabled) return;
+  await applySelectedTextFormatting('size', value);
   event.target.value = '';
-  if (value && !event.target.disabled) applySelectedTextFormatting('size', value);
 });
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
