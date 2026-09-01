@@ -35,6 +35,14 @@ test('checks inline notes and creates an exact replacement fix', () => {
   assert.equal(diagnostic.fix.text, 'application');
 });
 
+test('ignores formatting tags while preserving visible-word fix offsets', () => {
+  const source = '@startuml\nA -> B: <color:#169C9A><size:18>Recieve</size></color>\n@enduml';
+  const diagnostics = analyzeProseSpelling(source, checker);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].word, 'Recieve');
+  assert.equal(source.slice(diagnostics[0].fix.start, diagnostics[0].fix.end), 'Recieve');
+});
+
 test('ignores declarations, unlabeled arrows, and acronyms', () => {
   const source = '@startuml\nparticipant Aplication\nAplication -> API\nAplication -> API: Send HTTP API data\n@enduml';
   assert.deepEqual(analyzeProseSpelling(source, checker), []);

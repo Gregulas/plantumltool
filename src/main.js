@@ -29,6 +29,7 @@ import { toggleSectionComment } from './section-comment.js';
 import { GUEST_PROFILE_ID, createUserProfile, deleteUserProfile, initializeUserProfiles, listUserProfiles, selectUserProfile } from './user-profiles.js';
 import { loadWorkspaceSession, storeWorkspaceSession } from './workspace-session.js';
 import { expandScriptShortcut } from './script-shortcuts.js';
+import { createTextFormatEdit, textFormatSelectionContext } from './text-formatting.js';
 
 const DEFAULT_SOURCE = `@startuml
 skinparam backgroundColor white
@@ -209,6 +210,8 @@ const state = {
 };
 let openFileInNewTab = false;
 let workspaceSaveTimer = null;
+let textFormattingBusy = false;
+let textFormattingValidationSeq = 0;
 
 const app = document.querySelector('#app');
 const shortcutPlatform = detectShortcutPlatform(navigator);
@@ -292,6 +295,37 @@ app.innerHTML = `
       </div>
       <input id="fileInput" type="file" accept=".puml,.plantuml,.pu,.txt,text/plain" hidden />
     </header>
+    <div id="textFormattingToolbar" class="text-formatting-toolbar" role="toolbar" aria-label="Format selected PlantUML display text">
+      <span class="text-toolbar-label">Text</span>
+      <div class="text-format-buttons" aria-label="Text styles">
+        <button type="button" data-text-format="bold" title="Bold selected note or arrow-label text" aria-label="Bold"><strong>B</strong></button>
+        <button type="button" data-text-format="italic" title="Italicize selected note or arrow-label text" aria-label="Italic"><em>I</em></button>
+        <button type="button" data-text-format="underline" title="Underline selected note or arrow-label text" aria-label="Underline"><span class="format-underline">U</span></button>
+        <button type="button" data-text-format="strike" title="Strike through selected note or arrow-label text" aria-label="Strike-through"><span class="format-strike">S</span></button>
+        <button type="button" data-text-format="monospace" title="Use monospace for selected note or arrow-label text" aria-label="Monospace"><span class="format-monospace">&lt;/&gt;</span></button>
+      </div>
+      <span class="text-toolbar-separator" aria-hidden="true"></span>
+      <label class="text-color-control" title="Set selected text color">
+        <span>Color</span>
+        <input id="textColorInput" type="color" value="#169c9a" aria-label="Text color" />
+      </label>
+      <label class="text-size-control">
+        <span class="sr-only">Text size</span>
+        <select id="textSizeSelect" aria-label="Text size" title="Set selected text size">
+          <option value="">Size</option>
+          <option value="10">10</option>
+          <option value="12">12</option>
+          <option value="14">14</option>
+          <option value="16">16</option>
+          <option value="18">18</option>
+          <option value="20">20</option>
+          <option value="24">24</option>
+          <option value="28">28</option>
+          <option value="32">32</option>
+        </select>
+      </label>
+      <span id="textFormattingStatus" class="text-formatting-status" role="status" aria-live="polite">Select text inside a note or arrow label</span>
+    </div>
     <div id="documentTabs" class="document-tabs" role="tablist" aria-label="Open diagrams"></div>
 
     <dialog id="profileDialog" class="profile-dialog" aria-labelledby="profileDialogTitle">
@@ -440,7 +474,11 @@ const els = {
   editorPane: document.querySelector('.editor-pane'),
   previewPane: document.querySelector('.preview-pane'),
   problemsSplitter: document.querySelector('#problemsSplitter'),
-  documentTabs: document.querySelector('#documentTabs')
+  documentTabs: document.querySelector('#documentTabs'),
+  textFormattingToolbar: document.querySelector('#textFormattingToolbar'),
+  textFormattingStatus: document.querySelector('#textFormattingStatus'),
+  textColorInput: document.querySelector('#textColorInput'),
+  textSizeSelect: document.querySelector('#textSizeSelect')
   ,selectionActions: document.querySelector('#selectionActions')
   ,selectionOpenTabBtn: document.querySelector('#selectionOpenTabBtn')
   ,arrowActionMenu: document.querySelector('#arrowActionMenu')
@@ -1748,6 +1786,7 @@ function updateEditorMeta() {
   runLocalDiagnostics();
   restoreEditorView(els.editor, editorView);
   syncScroll();
+  refreshTextFormattingToolbar();
 }
 
 function jumpToLine(line, column = 1, options = {}) {
@@ -1999,6 +2038,123 @@ const colorPicker = createColorPicker({
     scheduleRender();
     els.renderStatus.textContent = 'Color updated';
   }
+});
+
+function textFormattingControls() {
+  return [
+    ...els.textFormattingToolbar.querySelectorAll('[data-text-format]'),
+    els.textColorInput,
+    els.textSizeSelect
+  ];
+}
+
+function setTextFormattingStatus(message, stateName = '') {
+  els.textFormattingStatus.textContent = message;
+  if (stateName) els.textFormattingStatus.dataset.state = stateName;
+  else delete els.textFormattingStatus.dataset.state;
+}
+
+function refreshTextFormattingToolbar() {
+  if (!els?.textFormattingToolbar || !els?.editor) return;
+  if (textFormattingBusy) {
+    textFormattingControls().forEach(control => { control.disabled = true; });
+    els.textFormattingToolbar.classList.add('is-validating');
+    return;
+  }
+
+  els.textFormattingToolbar.classList.remove('is-validating');
+  const selection = sourceSelectionFromView();
+  const context = textFormatSelectionContext(canonicalSource(), selection.start, selection.end);
+  textFormattingControls().forEach(control => { control.disabled = !context.valid; });
+  setTextFormattingStatus(
+    context.valid
+      ? `${context.kind === 'note' ? 'Note text' : 'Arrow label'} selected — choose a format`
+      : context.reason,
+    context.valid ? 'ready' : ''
+  );
+}
+
+async function applySelectedTextFormatting(format, value = '') {
+  colorPicker.close();
+  autocomplete.close();
+  unfoldAllPreserveCaret();
+  const source = canonicalSource();
+  const selection = sourceSelectionFromView();
+  const edit = createTextFormatEdit(source, selection.start, selection.end, format, value);
+  if (!edit.valid) {
+    setTextFormattingStatus(edit.reason, 'error');
+    return false;
+  }
+
+  const candidate = source.slice(0, edit.start) + edit.text + source.slice(edit.end);
+  const localError = analyzePlantUml(candidate).find(item => item.severity === 'error');
+  if (localError) {
+    setTextFormattingStatus(`Not applied: ${localError.message}`, 'error');
+    return false;
+  }
+
+  const validationSeq = ++textFormattingValidationSeq;
+  textFormattingBusy = true;
+  setTextFormattingStatus(`Validating ${edit.label.toLowerCase()} with PlantUML…`);
+  refreshTextFormattingToolbar();
+
+  try {
+    const candidateSvg = await renderPlantUml(normalizeSource(candidate), { dark: state.dark });
+    const parseError = extractSvgRenderError(candidateSvg);
+    if (parseError) {
+      setTextFormattingStatus(`Not applied: ${parseError.message}`, 'error');
+      return false;
+    }
+    const currentSelection = sourceSelectionFromView();
+    if (validationSeq !== textFormattingValidationSeq
+      || canonicalSource() !== source
+      || currentSelection.start !== selection.start
+      || currentSelection.end !== selection.end) {
+      setTextFormattingStatus('Not applied because the source or selection changed.', 'error');
+      return false;
+    }
+
+    editHistory.checkpoint();
+    els.editor.setRangeText(edit.text, edit.start, edit.end, 'end');
+    els.editor.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    state.source = els.editor.value;
+    state.foldProjection = buildFoldProjection(state.source, state.foldedStarts);
+    editHistory.checkpoint();
+    state.rendererDiagnostics = [];
+    updateEditorMeta();
+    scheduleRender();
+    setTextFormattingStatus(`${edit.label} applied`, 'ready');
+    els.renderStatus.textContent = `${edit.label} applied to ${edit.kind === 'note' ? 'note text' : 'arrow label'}`;
+    els.editor.focus({ preventScroll: true });
+    return true;
+  } catch (error) {
+    setTextFormattingStatus(`Not applied: ${error?.message || 'PlantUML validation failed.'}`, 'error');
+    return false;
+  } finally {
+    if (validationSeq === textFormattingValidationSeq) {
+      const status = els.textFormattingStatus.textContent;
+      const statusState = els.textFormattingStatus.dataset.state || '';
+      textFormattingBusy = false;
+      refreshTextFormattingToolbar();
+      setTextFormattingStatus(status, statusState);
+    }
+  }
+}
+
+els.textFormattingToolbar.addEventListener('pointerdown', event => {
+  if (event.target.closest('button[data-text-format]')) event.preventDefault();
+});
+els.textFormattingToolbar.addEventListener('click', event => {
+  const button = event.target.closest('button[data-text-format]');
+  if (button && !button.disabled) applySelectedTextFormatting(button.dataset.textFormat);
+});
+els.textColorInput.addEventListener('change', event => {
+  if (!event.target.disabled) applySelectedTextFormatting('color', event.target.value);
+});
+els.textSizeSelect.addEventListener('change', event => {
+  const value = event.target.value;
+  event.target.value = '';
+  if (value && !event.target.disabled) applySelectedTextFormatting('size', value);
 });
 
 function replaceSource(source, filename = 'diagram.puml', { fileHandle = null, saved = false, isNew = false } = {}) {
@@ -2470,6 +2626,7 @@ els.documentTabs.addEventListener('click', event => {
 });
 els.selectionOpenTabBtn.addEventListener('click', openSelectionInNewTab);
 for (const eventName of ['select', 'keyup', 'mouseup']) els.editor.addEventListener(eventName, () => requestAnimationFrame(refreshSelectionViewer));
+for (const eventName of ['select', 'keyup', 'mouseup', 'click']) els.editor.addEventListener(eventName, refreshTextFormattingToolbar);
 for (const eventName of ['input', 'select', 'keyup', 'mouseup', 'click']) els.editor.addEventListener(eventName, scheduleFollowEditor);
 
 els.previewCanvas.addEventListener('click', navigateFromDiagram);
