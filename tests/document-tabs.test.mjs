@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDocumentTab, isDocumentDirty, sourceForSelection } from '../src/document-tabs.js';
+import { confirmDocumentReplacement, createDocumentTab, documentReplacementPrompt, isDocumentDirty, sourceForSelection } from '../src/document-tabs.js';
 import { buildSourceNavigationIndex } from '../src/source-navigation.js';
 
 test('each document tracks its own saved state', () => {
@@ -10,6 +10,27 @@ test('each document tracks its own saved state', () => {
   saved.source += '\n';
   assert.equal(isDocumentDirty(saved), true);
   assert.equal(isDocumentDirty(fresh), true);
+});
+
+test('recent-file replacement warns only when the current tab has unsaved changes', () => {
+  const saved = createDocumentTab('@startuml\n@enduml', 'saved.puml', { saved: true });
+  assert.equal(documentReplacementPrompt(saved, 'recent.puml'), '');
+  assert.equal(confirmDocumentReplacement(saved, 'recent.puml', () => { throw new Error('must not prompt'); }), true);
+
+  saved.source = '@startuml\nA -> B\n@enduml';
+  assert.equal(
+    documentReplacementPrompt(saved, 'recent.puml'),
+    'Open “recent.puml” and replace “saved.puml” without saving your changes?'
+  );
+  let shownPrompt = '';
+  assert.equal(confirmDocumentReplacement(saved, 'recent.puml', prompt => {
+    shownPrompt = prompt;
+    return false;
+  }), false);
+  assert.match(shownPrompt, /recent\.puml.*saved\.puml/);
+
+  const fresh = createDocumentTab('@startuml\n@enduml', 'diagram.puml', { isNew: true });
+  assert.match(documentReplacementPrompt(fresh, 'recent.puml'), /without saving your changes/);
 });
 
 test('selection export includes referenced declarations but selects only requested script', () => {
