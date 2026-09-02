@@ -15,7 +15,7 @@ import { SHORTCUT_GROUPS, shortcutAction } from './keyboard-shortcuts.js';
 import { scrollCanvasDimensions, zoomedSvgDimensions } from './preview-zoom.js';
 import { isSavePickerUnavailableError, suggestedSourceFilename } from './file-naming.js';
 import { APP_VERSION } from './app-version.js';
-import { createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
+import { confirmDocumentReplacement, createDocumentTab, isDocumentDirty, sourceForSelection } from './document-tabs.js';
 import { DETACHED_PREVIEW_CHANNEL, detachedPreviewAction, detachedPreviewState, isDetachedPreviewAction, isDetachedPreviewLifecycle } from './detached-preview.js';
 import { autocompleteShortcutLabel, detectShortcutPlatform, formatShortcutLabel, isAutocompleteShortcut } from './shortcut-platform.js';
 import { wordCompatibleSvg } from './svg-export.js';
@@ -2394,6 +2394,12 @@ document.querySelector('#newBtn').addEventListener('click', () => addDocumentTab
 document.querySelector('#openBtn').addEventListener('click', () => openSourceFile(false));
 document.querySelector('#openInNewTabBtn').addEventListener('click', () => openSourceFile(true));
 async function openRecentFile(item) {
+  syncActiveDocument({ persist: false });
+  if (!confirmDocumentReplacement(activeDocumentTab(), item?.filename, message => window.confirm(message))) {
+    els.renderStatus.textContent = 'Open Recent cancelled — unsaved changes were kept';
+    return false;
+  }
+
   try {
     const handle = recentFileHandles.get(item.filename)
       || (!profileContext.isGuest
@@ -2405,7 +2411,7 @@ async function openRecentFile(item) {
       replaceSource(source, file.name || item.filename, { fileHandle: handle, saved: true });
       rememberRecentFile(file.name || item.filename, source, handle);
       els.renderStatus.textContent = `Opened recent file ${file.name || item.filename} with direct saving enabled`;
-      return;
+      return true;
     }
   } catch (error) {
     if (error?.name === 'AbortError') return;
@@ -2414,6 +2420,7 @@ async function openRecentFile(item) {
   replaceSource(item.source, item.filename, { saved: true });
   rememberRecentFile(item.filename, item.source);
   els.renderStatus.textContent = `Opened recent snapshot ${item.filename} — reopen it once with Open to enable direct saving`;
+  return true;
 }
 
 els.recentFilesMenu.addEventListener('click', event => {

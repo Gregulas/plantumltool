@@ -29,6 +29,18 @@ export function isDocumentDirty(tab) {
   return Boolean(tab?.isNewFile || tab?.source !== tab?.savedSource);
 }
 
+export function documentReplacementPrompt(tab, replacementFilename = '') {
+  if (!isDocumentDirty(tab)) return '';
+  const currentName = String(tab?.filename || 'current diagram');
+  const replacementName = String(replacementFilename || 'the selected recent file');
+  return `Open “${replacementName}” and replace “${currentName}” without saving your changes?`;
+}
+
+export function confirmDocumentReplacement(tab, replacementFilename, confirmReplacement) {
+  const prompt = documentReplacementPrompt(tab, replacementFilename);
+  return !prompt || Boolean(confirmReplacement?.(prompt));
+}
+
 function lineRange(source, start, end) {
   const lines = String(source).replace(/\r\n?/g, '\n').split('\n');
   const before = String(source).slice(0, start);
